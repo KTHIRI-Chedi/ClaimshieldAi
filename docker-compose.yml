@@ -1,0 +1,68 @@
+volumes:
+  qdrant_data:
+  n8n_data:
+  sandbox-tls:
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: claimshield_qdrant
+    restart: always
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+
+  sandbox-certs:
+    image: ghcr.io/n8n-io/n8n-sandbox-service-api:latest
+    container_name: claimshield_sandbox_certs
+    user: '0:0'
+    entrypoint: ['sh', '-c']
+    command:
+      - >
+        bootstrap-mtls.sh --out-dir /tls --api-san sandbox-api --control-san-prefix sandbox-runner --world-readable && chown -R sandbox-api:sandbox-api /tls/api && chmod -R a+rX /tls
+    volumes:
+      - sandbox-tls:/tls
+
+  sandbox-api:
+    image: ghcr.io/n8n-io/n8n-sandbox-service-api:latest
+    container_name: claimshield_sandbox_api
+    restart: always
+    ports:
+      - "3200:8080"
+    depends_on:
+      sandbox-certs:
+        condition: service_completed_successfully
+    environment:
+      - SANDBOX_API_KEYS=my-custom-secret-key-12345
+      - SANDBOX_API_RUNNER_REGISTRATION_TOKEN=my-runner-reg-token-12345
+      - SANDBOX_API_RUNNER_API_KEY=my-runner-api-key-12345
+      - SANDBOX_API_GRPC_TLS_CERT_FILE=/tls/api/grpc-server.crt
+      - SANDBOX_API_GRPC_TLS_KEY_FILE=/tls/api/grpc-server.key
+      - SANDBOX_API_GRPC_TLS_CLIENT_CA_FILE=/tls/api/ca.crt
+      - SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CA_FILE=/tls/api/ca.crt
+      - SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CERT_FILE=/tls/api/control-grpc-api-client.crt
+      - SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_KEY_FILE=/tls/api/control-grpc-api-client.key
+      - SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_SERVER_NAME=sandbox-runner-1
+    volumes:
+      - sandbox-tls:/tls:ro
+
+  n8n:
+    image: docker.io/n8nio/n8n:latest
+    container_name: claimshield_n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=claimshield_pass
+      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_RESTRICT_FILE_ACCESS_TO=/data
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+      - ./data:/data
+    depends_on:
+      - qdrant
+      - sandbox-api
