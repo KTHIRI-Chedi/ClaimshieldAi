@@ -71,7 +71,7 @@ Chaque agent **reçoit** et **renvoie** un format fixe. Tant que le contrat est 
 }
 ```
 - `totals_match` : `true` si les calculs sont justes, `false` en cas d'écart (+15 points), et **`null` si la facture est illisible ou si ce n'est pas une facture** (`status: needs_review`). `null` ne doit pas ajouter de points de fraude : la déclaration part en revue humaine.
-- `arithmetic_issue` : texte lisible (plusieurs écarts sont séparés par `; `), ou `null`.
+- `arithmetic_issue` : texte lisible (plusieurs écarts sont séparés par `; `), ou `null`. Il ne cite que des montants **réellement imprimés** sur la facture : chaque montant extrait par le LLM est vérifié dans le texte, et un montant absent (recalculé ou inventé par le LLM) est écarté et listé dans `ungrounded_amounts`. Si un écart est prouvé par des montants imprimés, `totals_match` vaut `false` ; sinon, un doute donne `null` (revue humaine), jamais une fraude.
 - `line_items[].type` : `part` (pièce), `labor` (main-d'œuvre, y compris quand elle est imprimée hors du tableau) ou **`other`** (peinture, consommables, divers). **`other` ne doit pas compter dans la règle « pièce facturée non visible sur les photos »**.
 - En cas d'échec (fichier introuvable, OCR, ou les deux LLM), le workflow **ne plante pas** : il renvoie `{ "error": true, "reason": "...", "status": "error", "totals_match": null, "line_items": [] }`.
 
@@ -96,7 +96,8 @@ Chaque agent **reçoit** et **renvoie** un format fixe. Tant que le contrat est 
   },
   "claimed_parts": ["Front bumper", "Left headlight"],
   "arithmetic_check": { "ok": true, "issues": [], "unchecked_lines": [], "computed_lines_sum": 1180, "computed_total": 1404.2 },
-  "review_reasons": []
+  "review_reasons": [],
+  "ungrounded_amounts": [{ "field": "total", "value": 1999.2 }]
 }
 ```
 - `risk_points` vaut 15 uniquement quand `status = arithmetic_mismatch`.

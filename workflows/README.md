@@ -10,10 +10,10 @@
    - **Split Into Chunks**: invoices longer than ~1,500 characters are cut between table rows, with one LLM call per part. The parts are merged in **Merge Chunks**: header fields come from the first part, totals from the last one, and the lines are concatenated. Short outputs mean no forgotten lines and no timeouts on long invoices.
    - **Fallback**: if the primary extractor fails for a part (timeout or invalid JSON), that part goes to the **Fallback Extractor** (`nvidia/nemotron-3-super-120b-a12b`, 60 s, 2 attempts). `extraction.llm_fallback_used` and `extraction.chunks` appear in the output.
 6. **Information Extractor** (primary: NVIDIA NIM `openai/gpt-oss-20b`, credential `NVIDIA_NIM_Free`, 120 s timeout, `reasoningEffort: low`): turns the text into structured JSON, with numbers copied exactly as printed and French formats handled (`1 190,500`). It covers line items (category, line discounts, VAT rate per line), labor, global discount, Total HT, single or multiple VAT, tax-inclusive (TTC) prices, other charges (timbre fiscal), and `is_invoice`.
-7. **Arithmetic Check** (Code, deterministic) returns a `status`:
+7. **Arithmetic Check** (Code, deterministic). It first runs a **grounding check**: every amount returned by the LLM must appear in the invoice text (spaced thousands like `1 043.20` are handled). Amounts that are not printed (recomputed, "corrected" or invented by the LLM) are listed in `ungrounded_amounts` and are not trusted: the checks that depend on them are skipped, so `arithmetic_issue` only quotes numbers printed on the invoice. It then returns a `status`:
    - `ok`;
    - `arithmetic_mismatch`: `risk_points = 15`, details in `arithmetic_check.issues` (line, labor, subtotal, net, VAT, tax base, total);
-   - `needs_review`: not an invoice, no line items or no total. `risk_points = 0`, reasons in `review_reasons`. An unreadable document is not a fraud signal.
+   - `needs_review`: not an invoice, no line items, no total, or ungrounded amounts with no other evidence. `risk_points = 0`, reasons in `review_reasons`. An unreadable document is not a fraud signal.
 
    The output starts with the fields read by the Fraud Risk & Decision agent: `error`, `totals_match` (`true`, `false`, or `null` for needs_review), `arithmetic_issue` (readable text or `null`), and `line_items[]` as `{ part, type: part|labor|other, quantity, unit_price, line_total }`. See the contract in `INTEGRATION.md`.
 

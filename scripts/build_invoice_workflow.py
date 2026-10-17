@@ -207,8 +207,9 @@ return [{
   },
 }];"""
 
-CHECK_JS = """// Deterministic arithmetic check on the extracted invoice.
-// status: ok | arithmetic_mismatch (+15 risk points) | needs_review (not an invoice / incomplete, 0 points)
+CHECK_JS = r"""// Deterministic arithmetic check on the extracted invoice.
+// status: ok | arithmetic_mismatch (+15 risk points) | needs_review (not an invoice, incomplete or
+// amounts not found on the invoice, 0 points)
 if ($json.error) {
   return {
     json: {
@@ -223,24 +224,51 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const round = (n) => Math.round(n * 1000) / 1000;
 const close = (a, b) => Math.abs(a - b) <= Math.max(0.05, Math.abs(b) * 0.001);
 const pct = (r) => (r > 1 ? r / 100 : r);
-const sum = (arr, f) => arr.reduce((s, x) => s + (num(f(x)) ?? 0), 0);
+const total = (arr) => round(arr.reduce((s, x) => s + x, 0));
 
 const issues = [];
 const reviewReasons = [];
 const uncheckedLines = [];
 const items = inv.line_items || [];
 
+// 0. Grounding: every amount the LLM returns must be printed in the invoice text. An amount that is not
+// (recomputed, "fixed" or invented by the LLM) is not trusted: the checks that depend on it are skipped,
+// so arithmetic_issue only quotes numbers that are really printed on the invoice.
+const source = $('Normalize Numbers').first().json;
+const printedValues = [];
+for (const token of String(source.invoice_text || '').match(/\d[\d \u00a0\u202f,]*(?:\.\d+)?/g) || []) {
+  const parts = (source.number_format === 'en' ? token.replace(/,/g, '') : token)
+    .split(/[ \u00a0\u202f,]+/).filter(Boolean).slice(0, 8);
+  // "1 043.20" may be one amount or two columns: keep every contiguous grouping
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j <= parts.length; j++) printedValues.push(parseFloat(parts.slice(i, j).join('')));
+  }
+}
+const ungrounded = [];
+const UNTRUSTED = 'untrusted';
+const ok = (x) => typeof x === 'number';
+const g = (v, field) => {
+  const n = num(v);
+  if (n == null) return null;
+  if (printedValues.some((p) => Math.abs(p - Math.abs(n)) < 0.006)) return n;
+  ungrounded.push({ field, value: n });
+  return UNTRUSTED;
+};
+
 if (inv.is_invoice === false) reviewReasons.push('not_an_invoice');
 if (!items.length) reviewReasons.push('no_line_items');
-if (num(inv.total) == null) reviewReasons.push('no_total');
 
 // 1. Each line: quantity x unit price, minus its discount
+let linesTrusted = true;
+const lineTotals = [];
 for (const li of items) {
+  const printed = g(li.line_total, `line_total "${li.description}"`);
+  if (printed === null) { reviewReasons.push(`line_without_amount: ${li.description}`); linesTrusted = false; continue; }
+  if (printed === UNTRUSTED) { linesTrusted = false; continue; }
+  lineTotals.push(printed);
   const qty = num(li.quantity);
-  const price = num(li.unit_price);
-  const printed = num(li.line_total);
-  if (printed == null) { reviewReasons.push(`line_without_amount: ${li.description}`); continue; }
-  if (qty == null || price == null) { uncheckedLines.push(li.description); continue; }
+  const price = g(li.unit_price, `unit_price "${li.description}"`);
+  if (qty == null || !ok(price)) { uncheckedLines.push(li.description); continue; }
   const gross = qty * price;
   const candidates = [gross - (num(li.discount_amount) ?? 0)];
   if (num(li.discount_percent) != null) candidates.push(gross * (1 - pct(li.discount_percent)));
@@ -250,58 +278,81 @@ for (const li of items) {
 }
 
 // 2. Labor printed outside the table (ignored if the same amount is also a "labor" line)
-let laborTotal = num(inv.labor?.total) ?? 0;
-if (num(inv.labor?.hours) != null && num(inv.labor?.rate) != null && !close(inv.labor.hours * inv.labor.rate, laborTotal)) {
-  issues.push({ type: 'labor_mismatch', printed: laborTotal, expected: round(inv.labor.hours * inv.labor.rate) });
+const hasLaborLine = items.some((li) => li.category === 'labor');
+const laborRaw = g(inv.labor?.total, 'labor.total');
+let laborTotal = ok(laborRaw) ? laborRaw : 0;
+if (laborRaw === UNTRUSTED && !hasLaborLine) linesTrusted = false;
+const laborRate = g(inv.labor?.rate, 'labor.rate');
+if (ok(laborRaw) && ok(laborRate) && num(inv.labor?.hours) != null && !close(inv.labor.hours * laborRate, laborRaw)) {
+  issues.push({ type: 'labor_mismatch', printed: laborRaw, expected: round(inv.labor.hours * laborRate) });
 }
 if (items.some((li) => li.category === 'labor' && close(num(li.line_total) ?? 0, laborTotal))) laborTotal = 0;
 
 // 3. Subtotal, discount, net before tax
-const linesSum = round(sum(items, (li) => li.line_total) + laborTotal);
-const discount = num(inv.discount_total) ?? 0;
-let base = linesSum - discount;
-const subtotal = num(inv.subtotal);
-if (subtotal != null) {
-  if (close(subtotal, linesSum)) base = subtotal - discount;
-  else if (discount && close(subtotal, linesSum - discount)) base = subtotal;
+const linesSum = linesTrusted ? total([...lineTotals, laborTotal]) : null;
+const discountRaw = g(inv.discount_total, 'discount_total');
+const discount = ok(discountRaw) ? discountRaw : 0;
+const discountKnown = discountRaw !== UNTRUSTED;
+let base = linesSum != null && discountKnown ? linesSum - discount : null;
+const subtotal = g(inv.subtotal, 'subtotal');
+if (ok(subtotal)) {
+  if (linesSum != null && close(subtotal, linesSum)) base = discountKnown ? subtotal - discount : null;
+  else if (linesSum != null && discount && close(subtotal, linesSum - discount)) base = subtotal;
   else {
-    issues.push({ type: 'subtotal_mismatch', printed: subtotal, expected: linesSum });
-    base = subtotal - discount;
+    if (linesSum != null) issues.push({ type: 'subtotal_mismatch', printed: subtotal, expected: linesSum });
+    base = discountKnown ? subtotal - discount : null;
   }
 }
-const net = num(inv.net_before_tax);
-if (net != null) {
-  if (!close(net, base)) issues.push({ type: 'net_before_tax_mismatch', printed: net, expected: round(base) });
+const net = g(inv.net_before_tax, 'net_before_tax');
+if (ok(net)) {
+  if (base != null && !close(net, base)) issues.push({ type: 'net_before_tax_mismatch', printed: net, expected: round(base) });
   base = net;
 }
 
 // 4. Taxes (one rate or several); with tax-inclusive prices the tax is informative only
-const taxLines = inv.tax_lines || [];
+const taxLines = (inv.tax_lines || []).map((t) => ({
+  label: t.label, rate: num(t.rate), base: g(t.base, `tax base "${t.label}"`), amount: g(t.amount, `tax "${t.label}"`),
+}));
+// The tax may be computed on a tax-exclusive base (base x rate) or contained in a tax-inclusive one
+// ("dont TVA": base - base / (1 + rate)).
+const taxFits = (b, r, amount) => close(b * pct(r), amount) || close(b - b / (1 + pct(r)), amount);
 for (const t of taxLines) {
-  if (num(t.rate) != null && num(t.base) != null && num(t.amount) != null && !close(t.base * pct(t.rate), t.amount)) {
+  if (t.rate != null && ok(t.base) && ok(t.amount) && !taxFits(t.base, t.rate, t.amount)) {
     issues.push({ type: 'tax_line_mismatch', label: t.label, printed: t.amount, expected: round(t.base * pct(t.rate)) });
   }
 }
-if (!inv.prices_include_tax) {
-  if (taxLines.length && taxLines.every((t) => num(t.base) != null) && !close(sum(taxLines, (t) => t.base), base)) {
-    issues.push({ type: 'tax_base_mismatch', printed: round(sum(taxLines, (t) => t.base)), expected: round(base) });
+const vat = g(inv.vat, 'vat');
+if (!inv.prices_include_tax && base != null) {
+  if (taxLines.length && taxLines.every((t) => ok(t.base)) && !close(total(taxLines.map((t) => t.base)), base)) {
+    issues.push({ type: 'tax_base_mismatch', printed: total(taxLines.map((t) => t.base)), expected: round(base) });
   }
-  if (!taxLines.length && num(inv.vat) != null && num(inv.vat_rate) != null && !close(base * pct(inv.vat_rate), inv.vat)) {
-    issues.push({ type: 'vat_mismatch', printed: inv.vat, expected: round(base * pct(inv.vat_rate)) });
+  if (!taxLines.length && ok(vat) && num(inv.vat_rate) != null && !close(base * pct(inv.vat_rate), vat)) {
+    issues.push({ type: 'vat_mismatch', printed: vat, expected: round(base * pct(inv.vat_rate)) });
   }
 }
-const tax = taxLines.length ? sum(taxLines, (t) => t.amount) : (num(inv.vat) ?? 0);
+const tax = taxLines.length
+  ? (taxLines.every((t) => ok(t.amount)) ? total(taxLines.map((t) => t.amount)) : null)
+  : (vat === UNTRUSTED ? null : vat ?? 0);
 
 // 5. Grand total = net + tax + other charges (timbre fiscal...). Both the tax-exclusive and the
 // tax-inclusive readings are accepted, so a wrong prices_include_tax flag from the LLM is not a fraud signal.
-const charges = sum(inv.other_charges || [], (c) => c.amount);
-const totals = [round(base + tax + charges), round(base + charges)];
-const expectedTotal = inv.prices_include_tax ? totals[1] : totals[0];
-if (num(inv.total) != null && !totals.some((t) => close(t, inv.total))) {
-  issues.push({ type: 'total_mismatch', printed: inv.total, expected: expectedTotal });
+const chargeValues = (inv.other_charges || []).map((c) => g(c.amount, `charge "${c.label}"`));
+const charges = chargeValues.includes(UNTRUSTED) ? null : total(chargeValues.filter(ok));
+const grandTotal = g(inv.total, 'total');
+if (grandTotal === null) reviewReasons.push('no_total');
+const known = base != null && tax != null && charges != null;
+const totals = known ? [round(base + tax + charges), round(base + charges)] : [];
+const expectedTotal = known ? (inv.prices_include_tax ? totals[1] : totals[0]) : null;
+if (ok(grandTotal) && known && !totals.some((t) => close(t, grandTotal))) {
+  issues.push({ type: 'total_mismatch', printed: grandTotal, expected: expectedTotal });
 }
+if (ungrounded.length) reviewReasons.push('ungrounded_amounts');
 
-const status = reviewReasons.length ? 'needs_review' : issues.length ? 'arithmetic_mismatch' : 'ok';
+// Arithmetic evidence found on printed numbers wins; otherwise any doubt means human review, never fraud.
+const notReadable = reviewReasons.some((r) => r === 'not_an_invoice' || r === 'no_line_items');
+const status = notReadable ? 'needs_review'
+  : issues.length ? 'arithmetic_mismatch'
+  : reviewReasons.length ? 'needs_review' : 'ok';
 
 // Fields read by the Fraud Risk & Decision agent (team contract): totals_match, arithmetic_issue, line_items.
 // type "other" (paint, consumables...) must not count as a part expected to be visible on the photos.
@@ -347,6 +398,7 @@ return {
       computed_total: expectedTotal,
     },
     review_reasons: reviewReasons,
+    ungrounded_amounts: ungrounded,
     extraction: { chunks: $json.chunks, llm_fallback_used: $json.llm_fallback_used },
   },
 };"""
