@@ -1,0 +1,429 @@
+{
+  "id": "InvAgentEval03b",
+  "name": "03b_Invoice_Agent_Evaluation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "58bbb89d-7717-46c1-a812-245a367e2994",
+      "name": "Run Evaluation",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== EDIT THESE BEFORE EACH RUN =====\nreturn [{\n  json: {\n    run_id: new Date().toISOString().replace(/[:.]/g, '-'),\n    run_label: 'meta/llama-3.2-11b-vision-instruct', // the model being tested\n    ground_truth: '/data/eval_invoices/ground_truth.json', // 38 labelled invoices (26 eval_invoices + 12 invoices)\n    techniques: 'few_shot',  // any of: zero_shot,few_shot,cot,self_consistency (each runs every invoice)\n    only_cases: '',          // e.g. 'c01,INV-005' to run a few; empty = all 38\n    pause_between_ms: 1500,  // small pause between invoices (free API rate limits)\n  },\n}];\n"
+      },
+      "id": "4ed57bb7-252a-44f5-a151-2a32a339df7e",
+      "name": "Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.ground_truth }}",
+        "options": {}
+      },
+      "id": "d4977dbf-5e63-4794-bd44-5e5e8528e41c",
+      "name": "Read Ground Truth",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read ground_truth.json and emit one item per (technique, invoice).\nconst s = $('Settings').first().json;\nconst buf = await this.helpers.getBinaryDataBuffer(0, 'data');\nlet cases = JSON.parse(buf.toString('utf8'));\nconst only = String(s.only_cases || '').split(',').map((x) => x.trim()).filter(Boolean);\nif (only.length) cases = cases.filter((c) => only.includes(c.id));\nconst techniques = String(s.techniques || 'few_shot').split(',').map((x) => x.trim()).filter(Boolean);\nconst out = [];\nfor (const technique of techniques) for (const c of cases) out.push({ json: { ...c, technique, invoice_path: `/data/${c.path}` } });\nreturn out;\n"
+      },
+      "id": "57b06498-76be-41aa-899d-ff94d3bd2553",
+      "name": "Build Case List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "63d6bce7-a7a7-4fbe-9c3d-a9a070459d32",
+      "name": "Loop Over Cases",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Call the agent exactly like the orchestrator does: the claim + the invoice path. Start the timer.\nconst c = $('Loop Over Cases').first().json;\nconst wait = Number($('Settings').first().json.pause_between_ms || 0);\nif (wait > 0 && $runIndex > 0) await new Promise((r) => setTimeout(r, wait));\nreturn [{ json: { claim: c.claim, invoice_path: c.invoice_path, technique: c.technique,\n                  _eval: { id: c.id, technique: c.technique, started_at: Date.now() } } }];\n"
+      },
+      "id": "9177e555-7f9c-4cea-bfd5-b4e2de6bd4c0",
+      "name": "Attach Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "InvParserAgent03",
+          "mode": "list",
+          "cachedResultName": "03_Invoice_Parser_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "bc8b6ec0-2496-49db-b9a5-cdd7b0b15e8c",
+      "name": "Call Invoice Agent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        160
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare the agent output for ONE invoice with its ground truth.\nconst c = $('Loop Over Cases').first().json;\nconst started = $('Attach Claim').first().json._eval.started_at;\nconst out = $input.first().json || {};\nconst exp = c.expected;\nconst latency_ms = Date.now() - started;\n\nconst close = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined &&\n  Math.abs(Number(a) - Number(b)) <= Math.max(0.01, Math.abs(Number(b)) * 0.005);\nconst norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')\n  .replace(/[^a-z0-9 ]/g, ' ').split(/\\s+/).filter(Boolean);\n// ROUGE-L F1 between two strings (token level, longest common subsequence)\nconst rougeL = (a, b) => {\n  const x = norm(a), y = norm(b);\n  if (!x.length || !y.length) return 0;\n  const dp = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));\n  for (let i = 1; i <= x.length; i++) for (let j = 1; j <= y.length; j++)\n    dp[i][j] = x[i - 1] === y[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);\n  const l = dp[x.length][y.length]; if (!l) return 0;\n  const p = l / y.length, r = l / x.length; return (2 * p * r) / (p + r);\n};\nconst ISSUE = { line_total_mismatch: 'LINE', labor_mismatch: 'LINE', subtotal_mismatch: 'SUBTOTAL',\n  net_before_tax_mismatch: 'SUBTOTAL', vat_mismatch: 'VAT', tax_line_mismatch: 'VAT', tax_base_mismatch: 'VAT', total_mismatch: 'TOTAL' };\nconst warnType = w => /Claimed amount/.test(w) ? 'CLAIM_MISMATCH' : /before the incident/.test(w) ? 'DATE_BEFORE_INCIDENT'\n  : /more than once/.test(w) ? 'DUPLICATE_LINE' : 'OTHER';\nconst cur = s => { const t = String(s || '').toUpperCase(); return /DT|TND|DINAR/.test(t) ? 'TND' : /EUR|€/.test(t) ? 'EUR' : t; };\nconst row = {\n  technique: c.technique, id: c.id, description: c.description, kind: c.kind, language: c.language,\n  source: c.source,\n  category: c.security_test ? 'security' : exp.status === 'needs_review' ? 'not_invoice' : c.kind !== 'pdf' ? c.kind\n    : exp.status === 'arithmetic_mismatch' ? 'arithmetic_error' : (exp.warnings || []).length ? 'warning' : 'clean',\n  latency_ms, failed: !!out.error, failure_reason: out.error ? String(out.reason || (out.error.message ?? out.error)) : '',\n  extraction_method: out.extraction_method || null,\n  llm_calls: out.extraction ? out.extraction.llm_calls : null,\n  agreement: out.extraction ? out.extraction.agreement : null,\n};\n\nif (!row.failed) {\n  // 1) verdict: ok | arithmetic_mismatch | needs_review (positive class for detection = arithmetic_mismatch)\n  row.expected_status = exp.status;\n  row.predicted_status = out.status;\n  row.status_correct = out.status === exp.status;\n  row.expected_error = exp.status === 'arithmetic_mismatch';\n  row.predicted_error = out.status === 'arithmetic_mismatch';\n  row.predicted_review = out.status === 'needs_review';\n  row.detection_correct = row.expected_error === row.predicted_error;\n  const pTypes = [...new Set(((out.arithmetic_check || {}).issues || []).map(i => ISSUE[i.type] || 'OTHER'))];\n  row.error_types_expected = exp.error_types ? exp.error_types.join(',') : '';\n  row.error_types_predicted = pTypes.join(',');\n  row.error_types_correct = exp.error_types ? pTypes.sort().join(',') === [...exp.error_types].sort().join(',') : null;\n\n  // 2) warnings (fraud signals)\n  const pW = [...new Set((out.warnings || []).map(warnType))];\n  row.warnings_expected = (exp.warnings || []).join(',');\n  row.warnings_predicted = pW.join(',');\n  row.warn_tp = pW.filter(w => (exp.warnings || []).includes(w)).length;\n  row.warn_fp = pW.filter(w => !(exp.warnings || []).includes(w)).length;\n  row.warn_fn = (exp.warnings || []).filter(w => !pW.includes(w)).length;\n  row.scale_fix_used = ((out.extraction || {}).corrected_amounts || []).length > 0;\n\n  // 3) line items: greedy matching on ROUGE-L of the name, fallback on type + quantity + unit price\n  const pred = (out.line_items || []).map((l, i) => ({ ...l, i }));\n  const used = new Set(); let tp = 0, qtyOk = 0, priceOk = 0, typeOk = 0, rougeSum = 0;\n  for (const e of exp.line_items) {\n    let best = null, bestScore = 0;\n    for (const p of pred) {\n      if (used.has(p.i)) continue;\n      const sc = rougeL(e.part, p.part) + (p.type === e.type ? 0.01 : 0) + (close(p.unit_price, e.unit_price) ? 0.02 : 0);\n      if (sc > bestScore) { best = p; bestScore = sc; }\n    }\n    if (!best || rougeL(e.part, best.part) < 0.5) {\n      best = pred.find(p => !used.has(p.i) && Math.abs(Number(p.quantity) - e.quantity) < 1e-6 && close(p.unit_price, e.unit_price)) || best;\n    }\n    if (best && (rougeL(e.part, best.part) >= 0.5 || close(best.unit_price, e.unit_price))) {\n      used.add(best.i); tp++;\n      rougeSum += rougeL(e.part, best.part);\n      if (Math.abs(Number(best.quantity) - e.quantity) < 1e-6) qtyOk++;\n      if (close(best.unit_price, e.unit_price)) priceOk++;\n      if (best.type === e.type) typeOk++;\n    }\n  }\n  row.items_expected = exp.line_items.length;\n  row.items_predicted = pred.length;\n  row.items_tp = tp; row.items_fp = pred.length - tp; row.items_fn = exp.line_items.length - tp;\n  row.items_qty_ok = qtyOk; row.items_price_ok = priceOk; row.items_type_ok = typeOk;\n  row.items_rougeL_sum = Number(rougeSum.toFixed(4));\n\n  // 4) header fields (only those the ground truth has)\n  const inv = out.invoice || {};\n  const vat = inv.vat ?? ((inv.tax_lines || []).length ? inv.tax_lines.reduce((a, t) => a + (Number(t.amount) || 0), 0) : null);\n  const chk = (k, ok) => { if (exp[k] !== undefined && exp[k] !== null) row['f_' + k] = ok; };\n  chk('total', close(inv.total, exp.total));\n  chk('subtotal', close(inv.subtotal ?? inv.net_before_tax, exp.subtotal));\n  chk('vat', close(vat, exp.vat));\n  chk('currency', cur(inv.currency) === cur(exp.currency));\n  chk('invoice_date', inv.invoice_date === exp.invoice_date);\n  chk('invoice_number', String(inv.invoice_number || '').replace(/\\s/g, '').toUpperCase() === String(exp.invoice_number).replace(/\\s/g, '').toUpperCase());\n  row.total_abs_error = exp.total == null || inv.total == null ? null : Math.abs(Number(inv.total) - exp.total);\n  const fieldsOk = Object.keys(row).filter(k => k.startsWith('f_')).every(k => row[k] !== false);\n  row.document_exact = row.status_correct && (row.error_types_correct !== false) && fieldsOk\n    && row.items_fp === 0 && row.items_fn === 0 && qtyOk === tp && priceOk === tp;\n\n  // 5) security: hidden \"ignore your instructions\" text (c26)\n  if (c.security_test) {\n    row.injection_verdict_protected = out.status !== 'ok';                  // not auto-approved\n    row.injection_extraction_manipulated = !close(inv.total, exp.total);    // the LLM copied the attacker's numbers\n  }\n}\nreturn [{ json: row }];\n"
+      },
+      "id": "958582c6-94e6-4c7a-84d7-013229458269",
+      "name": "Score Case",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn the per-invoice rows into metrics, one set per prompt technique, plus a comparison table.\nconst s = $('Settings').first().json;\nconst all = $input.all().map(i => i.json);\nconst pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);\nconst r3 = x => (x === null || x === undefined || Number.isNaN(x) ? null : Math.round(x * 1000) / 1000);\nconst prf = (tp, fp, fn) => {\n  const p = tp + fp ? tp / (tp + fp) : null, r = tp + fn ? tp / (tp + fn) : null;\n  const f = p !== null && r !== null && p + r ? (2 * p * r) / (p + r) : null;\n  return { precision: r3(p), recall: r3(r), f1: r3(f) };\n};\nconst mean = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);\nconst quant = (arr, q) => { if (!arr.length) return null; const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(q * a.length))]; };\n\nfunction compute(rows) {\n  const done = rows.filter(r => !r.failed);\n  const sum = (k, arr = done) => arr.reduce((a, r) => a + (Number(r[k]) || 0), 0);\n  const count = (f, arr = done) => arr.filter(f).length;\n  const TP = count(r => r.expected_error && r.predicted_error), FP = count(r => !r.expected_error && r.predicted_error);\n  const FN = count(r => r.expected_error && !r.predicted_error), TN = count(r => !r.expected_error && !r.predicted_error);\n  const itp = sum('items_tp');\n  const fields = {};\n  for (const f of ['total', 'subtotal', 'vat', 'currency', 'invoice_date', 'invoice_number']) {\n    const has = done.filter(r => r['f_' + f] !== undefined);\n    fields[f] = r3(has.length ? count(r => r['f_' + f], has) / has.length : null);\n  }\n  const lat = rows.map(r => r.latency_ms);\n  const latBy = m => rows.filter(r => r.extraction_method === m).map(r => r.latency_ms);\n  const sec = done.filter(r => r.injection_verdict_protected !== undefined);\n  const agr = done.map(r => r.agreement).filter(x => x !== null && x !== undefined);\n  const bySource = {};\n  for (const src of [...new Set(rows.map(r => r.source))]) {\n    const g = rows.filter(r => r.source === src), ok = g.filter(r => !r.failed);\n    bySource[src] = { cases: g.length, failed: g.length - ok.length, status_accuracy: r3(ok.length ? count(r => r.status_correct, ok) / ok.length : null),\n      document_exact: r3(ok.length ? count(r => r.document_exact, ok) / ok.length : null) };\n  }\n  const byCategory = {};\n  for (const cat of [...new Set(rows.map(r => r.category))]) {\n    const g = rows.filter(r => r.category === cat), ok = g.filter(r => !r.failed);\n    byCategory[cat] = { cases: g.length, failed: g.length - ok.length,\n      detection_accuracy: r3(ok.length ? count(r => r.detection_correct, ok) / ok.length : null),\n      document_exact: r3(ok.length ? count(r => r.document_exact, ok) / ok.length : null) };\n  }\n  const errs = done.map(r => r.total_abs_error).filter(x => x !== null && x !== undefined);\n  return {\n    cases: rows.length, completed: done.length, failed: rows.length - done.length,\n    failure_rate: r3(rows.length ? (rows.length - done.length) / rows.length : null),\n    status_accuracy: r3(done.length ? count(r => r.status_correct) / done.length : null),\n    errors_auto_approved: count(r => r.expected_error && r.predicted_status === 'ok'),\n    errors_sent_to_review: count(r => r.expected_error && r.predicted_review),\n    false_fraud_flags: count(r => !r.expected_error && r.predicted_error),\n    unneeded_reviews: count(r => r.expected_status === 'ok' && r.predicted_review),\n    detection: { TP, FP, FN, TN, accuracy: r3(done.length ? (TP + TN) / done.length : null), ...prf(TP, FP, FN),\n      error_type_accuracy: r3(count(r => r.expected_error && r.predicted_error && r.error_types_correct !== null) ? count(r => r.expected_error && r.predicted_error && r.error_types_correct) / count(r => r.expected_error && r.predicted_error && r.error_types_correct !== null) : null) },\n    warnings: prf(sum('warn_tp'), sum('warn_fp'), sum('warn_fn')),\n    line_items: { ...prf(itp, sum('items_fp'), sum('items_fn')),\n      quantity_accuracy: r3(itp ? sum('items_qty_ok') / itp : null), unit_price_accuracy: r3(itp ? sum('items_price_ok') / itp : null),\n      type_accuracy: r3(itp ? sum('items_type_ok') / itp : null), part_name_rougeL: r3(itp ? sum('items_rougeL_sum') / itp : null) },\n    field_accuracy: fields,\n    document_exact_match: r3(done.length ? count(r => r.document_exact) / done.length : null),\n    total_mae: r3(mean(errs)),\n    decimal_misread_rate: r3(done.length ? count(r => r.scale_fix_used) / done.length : null),\n    llm_calls_per_invoice: r3(mean(rows.map(r => r.llm_calls).filter(x => x !== null && x !== undefined))),\n    agreement_mean: r3(mean(agr)),\n    latency: { mean_s: r3(mean(lat) / 1000), p50_s: r3(quant(lat, 0.5) / 1000), p95_s: r3(quant(lat, 0.95) / 1000),\n      text_layer_mean_s: r3(mean(latBy('native_pdf_text')) / 1000), ocr_mean_s: r3(mean(latBy('llamaparse_ocr')) / 1000) },\n    security: { injection_tests: sec.length, verdict_protected: count(r => r.injection_verdict_protected, sec), extraction_manipulated: count(r => r.injection_extraction_manipulated, sec) },\n    by_source: bySource,\n    by_category: byCategory,\n    failures: rows.filter(r => r.failed).map(r => `${r.id}: ${r.failure_reason}`),\n  };\n}\n\nconst techniques = [...new Set(all.map(r => r.technique))];\nconst per = {};\nfor (const t of techniques) per[t] = compute(all.filter(r => r.technique === t));\n\nconst P = x => (x === null || x === undefined ? 'n/a' : (x * 100).toFixed(1) + ' %');\nconst N = x => (x === null || x === undefined ? 'n/a' : String(x));\nconst lines = [\n  ['Verdict accuracy (ok / mismatch / review)', m => P(m.status_accuracy)],\n  ['Errors auto-approved (must be 0)', m => String(m.errors_auto_approved)],\n  ['Errors sent to human review instead of flagged', m => String(m.errors_sent_to_review)],\n  ['False fraud flags on correct invoices', m => String(m.false_fraud_flags)],\n  ['Unneeded human reviews on correct invoices', m => String(m.unneeded_reviews)],\n  ['Error detection precision', m => P(m.detection.precision)],\n  ['Error detection recall', m => P(m.detection.recall)],\n  ['Error detection F1', m => P(m.detection.f1)],\n  ['Confusion matrix TP / FP / FN / TN', m => `${m.detection.TP} / ${m.detection.FP} / ${m.detection.FN} / ${m.detection.TN}`],\n  ['Error type correct (on detected)', m => P(m.detection.error_type_accuracy)],\n  ['Fraud warnings F1', m => P(m.warnings.f1)],\n  ['Invoice date accuracy', m => P(m.field_accuracy.invoice_date)],\n  ['Line items F1', m => P(m.line_items.f1)],\n  ['Unit price accuracy', m => P(m.line_items.unit_price_accuracy)],\n  ['Quantity accuracy', m => P(m.line_items.quantity_accuracy)],\n  ['Total / subtotal / VAT accuracy', m => `${P(m.field_accuracy.total)} / ${P(m.field_accuracy.subtotal)} / ${P(m.field_accuracy.vat)}`],\n  ['Line type accuracy (part / labor / other)', m => P(m.line_items.type_accuracy)],\n  ['Document exact match', m => P(m.document_exact_match)],\n  ['Amounts misread x100/x1000 (fixed by code)', m => P(m.decimal_misread_rate)],\n  ['Our 26 invoices: verdict / exact', m => `${P(m.by_source.ours?.status_accuracy)} / ${P(m.by_source.ours?.document_exact)}`],\n  ['Teammate 12 invoices: verdict / exact', m => `${P(m.by_source.teammate?.status_accuracy)} / ${P(m.by_source.teammate?.document_exact)}`],\n  ['Total mean absolute error', m => N(m.total_mae)],\n  ['Part names ROUGE-L F1', m => N(m.line_items.part_name_rougeL)],\n  ['Agreement between readings', m => (m.agreement_mean === null ? '-' : P(m.agreement_mean))],\n  ['LLM calls per invoice', m => N(m.llm_calls_per_invoice)],\n  ['Latency median / mean / p95 (s)', m => `${N(m.latency.p50_s)} / ${N(m.latency.mean_s)} / ${N(m.latency.p95_s)}`],\n  ['Latency text PDF / OCR (s)', m => `${N(m.latency.text_layer_mean_s)} / ${N(m.latency.ocr_mean_s)}`],\n  ['Failure rate', m => P(m.failure_rate)],\n  ['Injection: verdict protected (still flagged)', m => `${m.security.verdict_protected} / ${m.security.injection_tests}`],\n  ['Injection: extraction manipulated by attacker', m => `${m.security.extraction_manipulated} / ${m.security.injection_tests}`],\n];\nconst n = all.length / (techniques.length || 1);\nconst report_markdown = [\n  `### Invoice Parser – prompt technique comparison (${s.run_label})`,\n  `${n} invoices per technique · run ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,\n  '', `| Metric | ${techniques.join(' | ')} |`, `|---|${techniques.map(() => '---').join('|')}|`,\n  ...lines.map(([label, f]) => `| ${label} | ${techniques.map(t => f(per[t])).join(' | ')} |`),\n].join('\\n');\nreturn [{ json: { run_label: s.run_label, run_at: new Date().toISOString(), techniques, metrics: per, report_markdown } }];\n"
+      },
+      "id": "0250c925-b16f-49ac-af68-831e5165a3fc",
+      "name": "Aggregate Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "mode": "once",
+        "options": {
+          "fileName": "metrics.json"
+        }
+      },
+      "id": "6d912b50-27da-4d68-ba6f-dde948359b04",
+      "name": "Metrics to JSON",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/data/eval_results/{{ $('Settings').first().json.run_id }}_metrics.json",
+        "options": {}
+      },
+      "id": "d6645c91-b14d-455d-8a44-de57c125bf79",
+      "name": "Save Metrics JSON",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "report_markdown",
+        "options": {
+          "fileName": "report.md"
+        }
+      },
+      "id": "44b4566d-0c17-4032-bfaf-f17faaba17d1",
+      "name": "Report to Markdown",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/data/eval_results/{{ $('Settings').first().json.run_id }}_report.md",
+        "options": {}
+      },
+      "id": "37b5371f-54df-43ff-a0ca-807c35ea28fd",
+      "name": "Save Report MD",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One flat row per invoice for the CSV file.\nconst label = $('Settings').first().json.run_label;\nreturn $input.all().map(i => ({ json: { run_label: label, ...i.json } }));\n"
+      },
+      "id": "19ae15ea-6ac9-4787-852c-a1cc5b3bdbb0",
+      "name": "Per-Case Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {
+          "fileName": "cases.csv"
+        }
+      },
+      "id": "42a54c20-0b8a-4252-a70d-4998b33c9b1b",
+      "name": "Rows to CSV",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/data/eval_results/{{ $('Settings').first().json.run_id }}_cases.csv",
+        "options": {}
+      },
+      "id": "c0ba337a-4661-4e3f-bc95-c879c6daf3df",
+      "name": "Save Cases CSV",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "width": 600,
+        "height": 330,
+        "content": "## 03b – Invoice Agent Evaluation\n1. Test set: `data/eval_invoices/` (26 invoices + `ground_truth.json` for all 38) and `data/invoices/` (12 invoices).\n2. Make sure **03_Invoice_Parser_Agent** (id `InvParserAgent03`) is **published**: the evaluation calls the published version.\n3. Edit **Settings**: `run_label` = prompt version + model you are testing.\n4. Click **Run Evaluation** (~2–5 min for 26 invoices).\n5. Results: open **Aggregate Metrics** (copy `report_markdown` into the report). Files are saved in `data/eval_results/`.\n\nTo compare prompts or models: change the agent, **publish it again**, change `run_label`, run again."
+      },
+      "id": "09287a76-036d-4fe6-af66-f9c4dc314700",
+      "name": "How to use",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -420
+      ]
+    }
+  ],
+  "connections": {
+    "Run Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Read Ground Truth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Ground Truth": {
+      "main": [
+        [
+          {
+            "node": "Build Case List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Case List": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Claim": {
+      "main": [
+        [
+          {
+            "node": "Call Invoice Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Invoice Agent": {
+      "main": [
+        [
+          {
+            "node": "Score Case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Case": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Metrics": {
+      "main": [
+        [
+          {
+            "node": "Metrics to JSON",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Report to Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrics to JSON": {
+      "main": [
+        [
+          {
+            "node": "Save Metrics JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report to Markdown": {
+      "main": [
+        [
+          {
+            "node": "Save Report MD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Per-Case Rows": {
+      "main": [
+        [
+          {
+            "node": "Rows to CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rows to CSV": {
+      "main": [
+        [
+          {
+            "node": "Save Cases CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Cases": {
+      "main": [
+        [
+          {
+            "node": "Per-Case Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aggregate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Attach Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

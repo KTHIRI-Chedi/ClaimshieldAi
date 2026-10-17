@@ -1,0 +1,5 @@
+Self-Consistency uses the Zero-Shot prompt (1_zero_shot.txt) unchanged.
+Each invoice part is read 3 times at temperature 0.7 (instead of 0); the Merge Chunks node votes field by field:
+numbers -> the value most readings agree on, otherwise the middle reading; text -> most frequent value;
+line items -> most frequent number of lines, then per line the most frequent name/category and the voted amounts.
+extraction.agreement = share of fields on which all readings agree (confidence score).

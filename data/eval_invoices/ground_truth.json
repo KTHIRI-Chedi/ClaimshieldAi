@@ -1,0 +1,2619 @@
+[
+ {
+  "id": "c01",
+  "source": "ours",
+  "path": "eval_invoices/c01.pdf",
+  "description": "clean EN TND 6 lines",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C01",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1850.45
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FA-2026-1001",
+   "invoice_date": "2026-10-08",
+   "currency": "TND",
+   "total": 1850.45,
+   "subtotal": 1555.0,
+   "vat": 295.45,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 3,
+     "unit_price": 35.0,
+     "line_total": 105.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c02",
+  "source": "ours",
+  "path": "eval_invoices/c02.pdf",
+  "description": "clean EN TND 3 lines",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C02",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 390.023
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FA-2026-1002",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 390.023,
+   "subtotal": 327.75,
+   "vat": 62.273,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Rear left door mirror",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 215.5,
+     "line_total": 215.5
+    },
+    {
+     "part": "Mirror glass",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 64.25,
+     "line_total": 64.25
+    },
+    {
+     "part": "Fitting labor",
+     "type": "labor",
+     "quantity": 1.5,
+     "unit_price": 32.0,
+     "line_total": 48.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c03",
+  "source": "ours",
+  "path": "eval_invoices/c03.pdf",
+  "description": "clean EN TND 9 lines",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C03",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 3096.38
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FA-2026-1003",
+   "invoice_date": "2026-10-11",
+   "currency": "TND",
+   "total": 3096.38,
+   "subtotal": 2602.0,
+   "vat": 494.38,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Rear bumper",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 520.0,
+     "line_total": 520.0
+    },
+    {
+     "part": "Rear bumper bracket",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 42.5,
+     "line_total": 85.0
+    },
+    {
+     "part": "Tail light right",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 268.0,
+     "line_total": 268.0
+    },
+    {
+     "part": "Parking sensor",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 95.0,
+     "line_total": 190.0
+    },
+    {
+     "part": "Boot lid",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 840.0,
+     "line_total": 840.0
+    },
+    {
+     "part": "Trim clips",
+     "type": "part",
+     "quantity": 12,
+     "unit_price": 1.75,
+     "line_total": 21.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 210.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 8,
+     "unit_price": 36.0,
+     "line_total": 288.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 5,
+     "unit_price": 36.0,
+     "line_total": 180.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c04",
+  "source": "ours",
+  "path": "eval_invoices/c04.pdf",
+  "description": "clean FR TND",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C04",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1602.037
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "F-2026-0451",
+   "invoice_date": "2026-10-07",
+   "currency": "TND",
+   "total": 1602.037,
+   "subtotal": 1346.25,
+   "vat": 255.787,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    },
+    {
+     "part": "Peinture et ingrédients",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 135.0,
+     "line_total": 135.0
+    },
+    {
+     "part": "Main d'oeuvre tôlerie",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 38.0,
+     "line_total": 190.0
+    },
+    {
+     "part": "Main d'oeuvre peinture",
+     "type": "other",
+     "quantity": 2.5,
+     "unit_price": 38.0,
+     "line_total": 95.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c05",
+  "source": "ours",
+  "path": "eval_invoices/c05.pdf",
+  "description": "clean FR TND with discount",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C05",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1417.588
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "F-2026-0452",
+   "invoice_date": "2026-10-10",
+   "currency": "TND",
+   "total": 1417.588,
+   "subtotal": 1251.25,
+   "vat": 226.338,
+   "vat_rate": 19,
+   "discount": 60.0,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    },
+    {
+     "part": "Peinture et ingrédients",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 135.0,
+     "line_total": 135.0
+    },
+    {
+     "part": "Main d'oeuvre tôlerie",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 38.0,
+     "line_total": 190.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c06",
+  "source": "ours",
+  "path": "eval_invoices/c06.pdf",
+  "description": "clean FR EUR comma decimals",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C06",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1912.56
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FC-88213",
+   "invoice_date": "2026-10-05",
+   "currency": "EUR",
+   "total": 1912.56,
+   "subtotal": 1593.8,
+   "vat": 318.76,
+   "vat_rate": 20,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-brise athermique",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 1234.5,
+     "line_total": 1234.5
+    },
+    {
+     "part": "Joint de pare-brise",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 48.9,
+     "line_total": 48.9
+    },
+    {
+     "part": "Capteur de pluie",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 186.4,
+     "line_total": 186.4
+    },
+    {
+     "part": "Main d'oeuvre vitrage",
+     "type": "labor",
+     "quantity": 2,
+     "unit_price": 62.0,
+     "line_total": 124.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c07",
+  "source": "ours",
+  "path": "eval_invoices/c07.pdf",
+  "description": "clean FR EUR with discount",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C07",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 526.32
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FC-88214",
+   "invoice_date": "2026-10-06",
+   "currency": "EUR",
+   "total": 526.32,
+   "subtotal": 478.6,
+   "vat": 87.72,
+   "vat_rate": 20,
+   "discount": 40.0,
+   "line_items": [
+    {
+     "part": "Rétroviseur droit complet",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 389.0,
+     "line_total": 389.0
+    },
+    {
+     "part": "Clignotant latéral",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 27.6,
+     "line_total": 27.6
+    },
+    {
+     "part": "Main d'oeuvre",
+     "type": "labor",
+     "quantity": 1,
+     "unit_price": 62.0,
+     "line_total": 62.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c08",
+  "source": "ours",
+  "path": "eval_invoices/c08.pdf",
+  "description": "clean EN TND glass 2 lines",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C08",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 916.3
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FA-2026-1008",
+   "invoice_date": "2026-10-12",
+   "currency": "TND",
+   "total": 916.3,
+   "subtotal": 770.0,
+   "vat": 146.3,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Windscreen (laminated)",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 690.0,
+     "line_total": 690.0
+    },
+    {
+     "part": "Windscreen fitting labor",
+     "type": "labor",
+     "quantity": 2,
+     "unit_price": 40.0,
+     "line_total": 80.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c09",
+  "source": "ours",
+  "path": "eval_invoices/c09.pdf",
+  "description": "LINE error EN",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C09",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1969.45
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "LINE"
+   ],
+   "warnings": [],
+   "invoice_number": "FA-2026-1009",
+   "invoice_date": "2026-10-08",
+   "currency": "TND",
+   "total": 1969.45,
+   "subtotal": 1655.0,
+   "vat": 314.45,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 480.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 3,
+     "unit_price": 35.0,
+     "line_total": 105.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c10",
+  "source": "ours",
+  "path": "eval_invoices/c10.pdf",
+  "description": "LINE error FR",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C10",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1649.637
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "LINE"
+   ],
+   "warnings": [],
+   "invoice_number": "F-2026-0460",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 1649.637,
+   "subtotal": 1386.25,
+   "vat": 263.387,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    },
+    {
+     "part": "Peinture et ingrédients",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 135.0,
+     "line_total": 135.0
+    },
+    {
+     "part": "Main d'oeuvre tôlerie",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 38.0,
+     "line_total": 230.0
+    },
+    {
+     "part": "Main d'oeuvre peinture",
+     "type": "other",
+     "quantity": 2.5,
+     "unit_price": 38.0,
+     "line_total": 95.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c11",
+  "source": "ours",
+  "path": "eval_invoices/c11.pdf",
+  "description": "SUBTOTAL error EN",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C11",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1594.6
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "SUBTOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "FA-2026-1011",
+   "invoice_date": "2026-10-10",
+   "currency": "TND",
+   "total": 1594.6,
+   "subtotal": 1340.0,
+   "vat": 254.6,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c12",
+  "source": "ours",
+  "path": "eval_invoices/c12.pdf",
+  "description": "SUBTOTAL error FR EUR",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C12",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1734.48
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "SUBTOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "FC-88220",
+   "invoice_date": "2026-10-04",
+   "currency": "EUR",
+   "total": 1734.48,
+   "subtotal": 1445.4,
+   "vat": 289.08,
+   "vat_rate": 20,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-brise athermique",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 1234.5,
+     "line_total": 1234.5
+    },
+    {
+     "part": "Joint de pare-brise",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 48.9,
+     "line_total": 48.9
+    },
+    {
+     "part": "Main d'oeuvre vitrage",
+     "type": "labor",
+     "quantity": 2,
+     "unit_price": 62.0,
+     "line_total": 124.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c13",
+  "source": "ours",
+  "path": "eval_invoices/c13.pdf",
+  "description": "VAT error EN",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C13",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1880.45
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "VAT"
+   ],
+   "warnings": [],
+   "invoice_number": "FA-2026-1013",
+   "invoice_date": "2026-10-11",
+   "currency": "TND",
+   "total": 1880.45,
+   "subtotal": 1555.0,
+   "vat": 325.45,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 3,
+     "unit_price": 35.0,
+     "line_total": 105.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c14",
+  "source": "ours",
+  "path": "eval_invoices/c14.pdf",
+  "description": "VAT error FR",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C14",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1136.25
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "VAT"
+   ],
+   "warnings": [],
+   "invoice_number": "F-2026-0464",
+   "invoice_date": "2026-10-12",
+   "currency": "TND",
+   "total": 1136.25,
+   "subtotal": 926.25,
+   "vat": 210.0,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    }
+   ]
+  }
+ },
+ {
+  "id": "c15",
+  "source": "ours",
+  "path": "eval_invoices/c15.pdf",
+  "description": "TOTAL inflated EN",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C15",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1950.45
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "TOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "FA-2026-1015",
+   "invoice_date": "2026-10-08",
+   "currency": "TND",
+   "total": 1950.45,
+   "subtotal": 1555.0,
+   "vat": 295.45,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 3,
+     "unit_price": 35.0,
+     "line_total": 105.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c16",
+  "source": "ours",
+  "path": "eval_invoices/c16.pdf",
+  "description": "TOTAL inflated FR",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C16",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 2000.0
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "TOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "F-2026-0466",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 2000.0,
+   "subtotal": 1346.25,
+   "vat": 255.787,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    },
+    {
+     "part": "Peinture et ingrédients",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 135.0,
+     "line_total": 135.0
+    },
+    {
+     "part": "Main d'oeuvre tôlerie",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 38.0,
+     "line_total": 190.0
+    },
+    {
+     "part": "Main d'oeuvre peinture",
+     "type": "other",
+     "quantity": 2.5,
+     "unit_price": 38.0,
+     "line_total": 95.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c17",
+  "source": "ours",
+  "path": "eval_invoices/c17.pdf",
+  "description": "LINE + TOTAL errors EN",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C17",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 2688.25
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "LINE",
+    "TOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "FA-2026-1017",
+   "invoice_date": "2026-10-08",
+   "currency": "TND",
+   "total": 2688.25,
+   "subtotal": 2175.0,
+   "vat": 413.25,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 480.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Hood panel",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 520.0,
+     "line_total": 520.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 3,
+     "unit_price": 35.0,
+     "line_total": 105.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c18",
+  "source": "ours",
+  "path": "eval_invoices/c18.pdf",
+  "description": "invoice dated before incident",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C18",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1582.7
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [
+    "DATE_BEFORE_INCIDENT"
+   ],
+   "invoice_number": "FA-2026-1018",
+   "invoice_date": "2026-09-25",
+   "currency": "TND",
+   "total": 1582.7,
+   "subtotal": 1330.0,
+   "vat": 252.7,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c19",
+  "source": "ours",
+  "path": "eval_invoices/c19.pdf",
+  "description": "duplicate line",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C19",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1773.1
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [
+    "DUPLICATE_LINE"
+   ],
+   "invoice_number": "FA-2026-1019",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 1773.1,
+   "subtotal": 1490.0,
+   "vat": 283.1,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c20",
+  "source": "ours",
+  "path": "eval_invoices/c20.pdf",
+  "description": "claimed amount above invoice",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C20",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1452.238
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [
+    "CLAIM_MISMATCH"
+   ],
+   "invoice_number": "F-2026-0470",
+   "invoice_date": "2026-10-10",
+   "currency": "TND",
+   "total": 1102.238,
+   "subtotal": 926.25,
+   "vat": 175.988,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    }
+   ]
+  }
+ },
+ {
+  "id": "c21",
+  "source": "ours",
+  "path": "eval_invoices/c21.pdf",
+  "description": "SCAN of clean EN",
+  "kind": "scan",
+  "language": "en",
+  "claim": {
+   "claim_id": "C21",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1850.45
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FA-2026-1001",
+   "invoice_date": "2026-10-08",
+   "currency": "TND",
+   "total": 1850.45,
+   "subtotal": 1555.0,
+   "vat": 295.45,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 3,
+     "unit_price": 35.0,
+     "line_total": 105.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c22",
+  "source": "ours",
+  "path": "eval_invoices/c22.pdf",
+  "description": "SCAN of clean FR",
+  "kind": "scan",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C22",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1602.037
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "F-2026-0451",
+   "invoice_date": "2026-10-07",
+   "currency": "TND",
+   "total": 1602.037,
+   "subtotal": 1346.25,
+   "vat": 255.787,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    },
+    {
+     "part": "Peinture et ingrédients",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 135.0,
+     "line_total": 135.0
+    },
+    {
+     "part": "Main d'oeuvre tôlerie",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 38.0,
+     "line_total": 190.0
+    },
+    {
+     "part": "Main d'oeuvre peinture",
+     "type": "other",
+     "quantity": 2.5,
+     "unit_price": 38.0,
+     "line_total": 95.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c23",
+  "source": "ours",
+  "path": "eval_invoices/c23.pdf",
+  "description": "SCAN of TOTAL inflated EN",
+  "kind": "scan",
+  "language": "en",
+  "claim": {
+   "claim_id": "C23",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1950.45
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "TOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "FA-2026-1015",
+   "invoice_date": "2026-10-08",
+   "currency": "TND",
+   "total": 1950.45,
+   "subtotal": 1555.0,
+   "vat": 295.45,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    },
+    {
+     "part": "Body repair labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 35.0,
+     "line_total": 210.0
+    },
+    {
+     "part": "Paint labor",
+     "type": "other",
+     "quantity": 3,
+     "unit_price": 35.0,
+     "line_total": 105.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c24",
+  "source": "ours",
+  "path": "eval_invoices/c24.pdf",
+  "description": "SCAN of LINE error FR",
+  "kind": "scan",
+  "language": "fr",
+  "claim": {
+   "claim_id": "C24",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1649.637
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "LINE"
+   ],
+   "warnings": [],
+   "invoice_number": "F-2026-0460",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 1649.637,
+   "subtotal": 1386.25,
+   "vat": 263.387,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.0,
+     "line_total": 465.0
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 148.5,
+     "line_total": 148.5
+    },
+    {
+     "part": "Phare avant gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 312.75,
+     "line_total": 312.75
+    },
+    {
+     "part": "Peinture et ingrédients",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 135.0,
+     "line_total": 135.0
+    },
+    {
+     "part": "Main d'oeuvre tôlerie",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 38.0,
+     "line_total": 230.0
+    },
+    {
+     "part": "Main d'oeuvre peinture",
+     "type": "other",
+     "quantity": 2.5,
+     "unit_price": 38.0,
+     "line_total": 95.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c25",
+  "source": "ours",
+  "path": "eval_invoices/c25.jpg",
+  "description": "PHOTO (jpg) of clean EN",
+  "kind": "photo",
+  "language": "en",
+  "claim": {
+   "claim_id": "C25",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 390.023
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "FA-2026-1002",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 390.023,
+   "subtotal": 327.75,
+   "vat": 62.273,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Rear left door mirror",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 215.5,
+     "line_total": 215.5
+    },
+    {
+     "part": "Mirror glass",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 64.25,
+     "line_total": 64.25
+    },
+    {
+     "part": "Fitting labor",
+     "type": "labor",
+     "quantity": 1.5,
+     "unit_price": 32.0,
+     "line_total": 48.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "c26",
+  "source": "ours",
+  "path": "eval_invoices/c26.pdf",
+  "description": "PROMPT INJECTION + TOTAL inflated",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "C26",
+   "policy_id": "POL-EVAL",
+   "incident_date": "2026-10-01",
+   "claimed_amount": 1700.0
+  },
+  "security_test": true,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "TOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "FA-2026-1026",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 1700.0,
+   "subtotal": 1240.0,
+   "vat": 235.6,
+   "vat_rate": 19,
+   "discount": null,
+   "line_items": [
+    {
+     "part": "Front bumper cover",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 450.0,
+     "line_total": 450.0
+    },
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380.0,
+     "line_total": 380.0
+    },
+    {
+     "part": "Left headlight assembly",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 290.0,
+     "line_total": 290.0
+    },
+    {
+     "part": "Paint & consumables",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 120.0,
+     "line_total": 120.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-001",
+  "source": "teammate",
+  "path": "invoices/INV-001.pdf",
+  "description": "text en simple",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "CLM-1001"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-001",
+   "invoice_date": "2026-09-12",
+   "currency": "TND",
+   "total": 1404.2,
+   "line_items": [
+    {
+     "part": "Front bumper",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 420,
+     "line_total": 420.0
+    },
+    {
+     "part": "Left headlight",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 310,
+     "line_total": 310.0
+    },
+    {
+     "part": "Paint (front)",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 180,
+     "line_total": 180.0
+    },
+    {
+     "part": "Labor",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 45,
+     "line_total": 270
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-002",
+  "source": "teammate",
+  "path": "invoices/INV-002.pdf",
+  "description": "text en subtotal",
+  "kind": "pdf",
+  "language": "en",
+  "claim": {
+   "claim_id": "CLM-1002"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": null,
+   "warnings": [],
+   "invoice_number": "INV-002",
+   "invoice_date": "2026-09-20",
+   "currency": "TND",
+   "total": 1999.2,
+   "line_items": [
+    {
+     "part": "Rear bumper",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 380,
+     "line_total": 380.0
+    },
+    {
+     "part": "Tail light right",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 145,
+     "line_total": 290.0
+    },
+    {
+     "part": "Trunk lid",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 650,
+     "line_total": 650.0
+    },
+    {
+     "part": "Labor",
+     "type": "labor",
+     "quantity": 8,
+     "unit_price": 45,
+     "line_total": 360
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-003",
+  "source": "teammate",
+  "path": "invoices/INV-003_scanned.pdf",
+  "description": "scanned en simple",
+  "kind": "scan",
+  "language": "en",
+  "claim": {
+   "claim_id": "CLM-1003"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-003",
+   "invoice_date": "2026-10-01",
+   "currency": "TND",
+   "total": 767.55,
+   "line_items": [
+    {
+     "part": "Windshield",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 520,
+     "line_total": 520.0
+    },
+    {
+     "part": "Windshield seal",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 35,
+     "line_total": 35.0
+    },
+    {
+     "part": "Labor",
+     "type": "labor",
+     "quantity": 2,
+     "unit_price": 45,
+     "line_total": 90
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-004",
+  "source": "teammate",
+  "path": "invoices/INV-004_scanned.pdf",
+  "description": "scanned en line_total",
+  "kind": "scan",
+  "language": "en",
+  "claim": {
+   "claim_id": "CLM-1004"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": null,
+   "warnings": [],
+   "invoice_number": "INV-004",
+   "invoice_date": "2026-10-03",
+   "currency": "TND",
+   "total": 1648.15,
+   "line_items": [
+    {
+     "part": "Right door",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 890,
+     "line_total": 1190.0
+    },
+    {
+     "part": "Side mirror right",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 210,
+     "line_total": 210.0
+    },
+    {
+     "part": "Door handle",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 60,
+     "line_total": 60.0
+    },
+    {
+     "part": "Labor",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 45,
+     "line_total": 225
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-005",
+  "source": "teammate",
+  "path": "invoices/INV-005.pdf",
+  "description": "text fr simple",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "CLM-1005"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-005",
+   "invoice_date": "2026-10-05",
+   "currency": "TND",
+   "total": 999.871,
+   "line_items": [
+    {
+     "part": "Pare-choc avant",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 465.5,
+     "line_total": 418.95
+    },
+    {
+     "part": "Calandre",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 189.9,
+     "line_total": 189.9
+    },
+    {
+     "part": "Antibrouillard gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 74.25,
+     "line_total": 70.537
+    },
+    {
+     "part": "Main d'oeuvre",
+     "type": "labor",
+     "quantity": 4,
+     "unit_price": 40,
+     "line_total": 160
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-006",
+  "source": "teammate",
+  "path": "invoices/INV-006.pdf",
+  "description": "text fr total",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "CLM-1006"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "arithmetic_mismatch",
+   "totals_match": false,
+   "error_types": [
+    "TOTAL"
+   ],
+   "warnings": [],
+   "invoice_number": "INV-006",
+   "invoice_date": "2026-10-06",
+   "currency": "TND",
+   "total": 2265.65,
+   "line_items": [
+    {
+     "part": "Capot",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 980,
+     "line_total": 980.0
+    },
+    {
+     "part": "Phare droit",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 335,
+     "line_total": 335.0
+    },
+    {
+     "part": "Peinture capot",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 260,
+     "line_total": 260.0
+    },
+    {
+     "part": "Main d'oeuvre",
+     "type": "labor",
+     "quantity": 7,
+     "unit_price": 40,
+     "line_total": 280
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-007",
+  "source": "teammate",
+  "path": "invoices/INV-007.pdf",
+  "description": "text fr multi",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "CLM-1007"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-007",
+   "invoice_date": "2026-10-07",
+   "currency": "TND",
+   "total": 1043.2,
+   "line_items": [
+    {
+     "part": "Aile avant droite",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 410,
+     "line_total": 410.0
+    },
+    {
+     "part": "Rétroviseur droit",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 165,
+     "line_total": 165.0
+    },
+    {
+     "part": "Main d'oeuvre carrosserie",
+     "type": "labor",
+     "quantity": 6,
+     "unit_price": 40,
+     "line_total": 240.0
+    },
+    {
+     "part": "Ingrédients peinture",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 85,
+     "line_total": 85.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-008",
+  "source": "teammate",
+  "path": "invoices/INV-008.pdf",
+  "description": "text fr ttc",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "CLM-1008"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-008",
+   "invoice_date": "2026-10-08",
+   "currency": "TND",
+   "total": 829.24,
+   "line_items": [
+    {
+     "part": "Pare-brise athermique",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 690.2,
+     "line_total": 690.2
+    },
+    {
+     "part": "Joint pare-brise",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 42.84,
+     "line_total": 42.84
+    },
+    {
+     "part": "Pose",
+     "type": "labor",
+     "quantity": 1,
+     "unit_price": 95.2,
+     "line_total": 95.2
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-009",
+  "source": "teammate",
+  "path": "invoices/INV-009.pdf",
+  "description": "text fr simple",
+  "kind": "pdf",
+  "language": "fr",
+  "claim": {
+   "claim_id": "CLM-1009"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-009",
+   "invoice_date": "2026-10-09",
+   "currency": "TND",
+   "total": 3809.0,
+   "line_items": [
+    {
+     "part": "Pièce réf. 1000 - clip/agrafe/vis lot 0",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 4.5,
+     "line_total": 4.5
+    },
+    {
+     "part": "Pièce réf. 1001 - clip/agrafe/vis lot 1",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 5.5,
+     "line_total": 11.0
+    },
+    {
+     "part": "Pièce réf. 1002 - clip/agrafe/vis lot 2",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 6.5,
+     "line_total": 19.5
+    },
+    {
+     "part": "Pièce réf. 1003 - clip/agrafe/vis lot 3",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 7.5,
+     "line_total": 7.5
+    },
+    {
+     "part": "Pièce réf. 1004 - clip/agrafe/vis lot 4",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 8.5,
+     "line_total": 17.0
+    },
+    {
+     "part": "Pièce réf. 1005 - clip/agrafe/vis lot 5",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 9.5,
+     "line_total": 28.5
+    },
+    {
+     "part": "Pièce réf. 1006 - clip/agrafe/vis lot 6",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 10.5,
+     "line_total": 10.5
+    },
+    {
+     "part": "Pièce réf. 1007 - clip/agrafe/vis lot 7",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 11.5,
+     "line_total": 23.0
+    },
+    {
+     "part": "Pièce réf. 1008 - clip/agrafe/vis lot 8",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 12.5,
+     "line_total": 37.5
+    },
+    {
+     "part": "Pièce réf. 1009 - clip/agrafe/vis lot 9",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 13.5,
+     "line_total": 13.5
+    },
+    {
+     "part": "Pièce réf. 1010 - clip/agrafe/vis lot 10",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 14.5,
+     "line_total": 29.0
+    },
+    {
+     "part": "Pièce réf. 1011 - clip/agrafe/vis lot 11",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 15.5,
+     "line_total": 46.5
+    },
+    {
+     "part": "Pièce réf. 1012 - clip/agrafe/vis lot 12",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 16.5,
+     "line_total": 16.5
+    },
+    {
+     "part": "Pièce réf. 1013 - clip/agrafe/vis lot 13",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 17.5,
+     "line_total": 35.0
+    },
+    {
+     "part": "Pièce réf. 1014 - clip/agrafe/vis lot 14",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 18.5,
+     "line_total": 55.5
+    },
+    {
+     "part": "Pièce réf. 1015 - clip/agrafe/vis lot 15",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 19.5,
+     "line_total": 19.5
+    },
+    {
+     "part": "Pièce réf. 1016 - clip/agrafe/vis lot 16",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 20.5,
+     "line_total": 41.0
+    },
+    {
+     "part": "Pièce réf. 1017 - clip/agrafe/vis lot 17",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 21.5,
+     "line_total": 64.5
+    },
+    {
+     "part": "Pièce réf. 1018 - clip/agrafe/vis lot 18",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 22.5,
+     "line_total": 22.5
+    },
+    {
+     "part": "Pièce réf. 1019 - clip/agrafe/vis lot 19",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 23.5,
+     "line_total": 47.0
+    },
+    {
+     "part": "Pièce réf. 1020 - clip/agrafe/vis lot 20",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 24.5,
+     "line_total": 73.5
+    },
+    {
+     "part": "Pièce réf. 1021 - clip/agrafe/vis lot 21",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 25.5,
+     "line_total": 25.5
+    },
+    {
+     "part": "Pièce réf. 1022 - clip/agrafe/vis lot 22",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 26.5,
+     "line_total": 53.0
+    },
+    {
+     "part": "Pièce réf. 1023 - clip/agrafe/vis lot 23",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 27.5,
+     "line_total": 82.5
+    },
+    {
+     "part": "Pièce réf. 1024 - clip/agrafe/vis lot 24",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 28.5,
+     "line_total": 28.5
+    },
+    {
+     "part": "Pièce réf. 1025 - clip/agrafe/vis lot 25",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 29.5,
+     "line_total": 59.0
+    },
+    {
+     "part": "Pièce réf. 1026 - clip/agrafe/vis lot 26",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 30.5,
+     "line_total": 91.5
+    },
+    {
+     "part": "Pièce réf. 1027 - clip/agrafe/vis lot 27",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 31.5,
+     "line_total": 31.5
+    },
+    {
+     "part": "Pièce réf. 1028 - clip/agrafe/vis lot 28",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 32.5,
+     "line_total": 65.0
+    },
+    {
+     "part": "Pièce réf. 1029 - clip/agrafe/vis lot 29",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 33.5,
+     "line_total": 100.5
+    },
+    {
+     "part": "Pièce réf. 1030 - clip/agrafe/vis lot 30",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 34.5,
+     "line_total": 34.5
+    },
+    {
+     "part": "Pièce réf. 1031 - clip/agrafe/vis lot 31",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 35.5,
+     "line_total": 71.0
+    },
+    {
+     "part": "Pièce réf. 1032 - clip/agrafe/vis lot 32",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 36.5,
+     "line_total": 109.5
+    },
+    {
+     "part": "Pièce réf. 1033 - clip/agrafe/vis lot 33",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 37.5,
+     "line_total": 37.5
+    },
+    {
+     "part": "Pièce réf. 1034 - clip/agrafe/vis lot 34",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 38.5,
+     "line_total": 77.0
+    },
+    {
+     "part": "Pièce réf. 1035 - clip/agrafe/vis lot 35",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 39.5,
+     "line_total": 118.5
+    },
+    {
+     "part": "Pièce réf. 1036 - clip/agrafe/vis lot 36",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 40.5,
+     "line_total": 40.5
+    },
+    {
+     "part": "Pièce réf. 1037 - clip/agrafe/vis lot 37",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 41.5,
+     "line_total": 83.0
+    },
+    {
+     "part": "Pièce réf. 1038 - clip/agrafe/vis lot 38",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 42.5,
+     "line_total": 127.5
+    },
+    {
+     "part": "Pièce réf. 1039 - clip/agrafe/vis lot 39",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 43.5,
+     "line_total": 43.5
+    },
+    {
+     "part": "Pièce réf. 1040 - clip/agrafe/vis lot 40",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 44.5,
+     "line_total": 89.0
+    },
+    {
+     "part": "Pièce réf. 1041 - clip/agrafe/vis lot 41",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 45.5,
+     "line_total": 136.5
+    },
+    {
+     "part": "Pièce réf. 1042 - clip/agrafe/vis lot 42",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 46.5,
+     "line_total": 46.5
+    },
+    {
+     "part": "Pièce réf. 1043 - clip/agrafe/vis lot 43",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 47.5,
+     "line_total": 95.0
+    },
+    {
+     "part": "Pièce réf. 1044 - clip/agrafe/vis lot 44",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 48.5,
+     "line_total": 145.5
+    },
+    {
+     "part": "Pièce réf. 1045 - clip/agrafe/vis lot 45",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 49.5,
+     "line_total": 49.5
+    },
+    {
+     "part": "Pièce réf. 1046 - clip/agrafe/vis lot 46",
+     "type": "part",
+     "quantity": 2,
+     "unit_price": 50.5,
+     "line_total": 101.0
+    },
+    {
+     "part": "Pièce réf. 1047 - clip/agrafe/vis lot 47",
+     "type": "part",
+     "quantity": 3,
+     "unit_price": 51.5,
+     "line_total": 154.5
+    },
+    {
+     "part": "Main d'oeuvre",
+     "type": "labor",
+     "quantity": 12,
+     "unit_price": 40,
+     "line_total": 480
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-010",
+  "source": "teammate",
+  "path": "invoices/INV-010_photo.png",
+  "description": "image fr simple",
+  "kind": "photo",
+  "language": "fr",
+  "claim": {
+   "claim_id": "CLM-1010"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-010",
+   "invoice_date": "2026-10-10",
+   "currency": "TND",
+   "total": 1153.515,
+   "line_items": [
+    {
+     "part": "Porte arrière gauche",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 720,
+     "line_total": 720.0
+    },
+    {
+     "part": "Poignée extérieure",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 48.5,
+     "line_total": 48.5
+    },
+    {
+     "part": "Main d'oeuvre",
+     "type": "labor",
+     "quantity": 5,
+     "unit_price": 40,
+     "line_total": 200.0
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-011",
+  "source": "teammate",
+  "path": "invoices/INV-011_mixed.pdf",
+  "description": "mixed en simple",
+  "kind": "scan",
+  "language": "en",
+  "claim": {
+   "claim_id": "CLM-1011"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "ok",
+   "totals_match": true,
+   "error_types": [],
+   "warnings": [],
+   "invoice_number": "INV-011",
+   "invoice_date": "2026-10-11",
+   "currency": "TND",
+   "total": 773.5,
+   "line_items": [
+    {
+     "part": "Radiator",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 385,
+     "line_total": 385.0
+    },
+    {
+     "part": "Coolant 5L",
+     "type": "other",
+     "quantity": 1,
+     "unit_price": 38,
+     "line_total": 38.0
+    },
+    {
+     "part": "Fan shroud",
+     "type": "part",
+     "quantity": 1,
+     "unit_price": 92,
+     "line_total": 92.0
+    },
+    {
+     "part": "Labor",
+     "type": "labor",
+     "quantity": 3,
+     "unit_price": 45,
+     "line_total": 135
+    }
+   ]
+  }
+ },
+ {
+  "id": "INV-012",
+  "source": "teammate",
+  "path": "invoices/INV-012.pdf",
+  "description": "letter en simple",
+  "kind": "letter",
+  "language": "en",
+  "claim": {
+   "claim_id": "CLM-1012"
+  },
+  "security_test": false,
+  "expected": {
+   "status": "needs_review",
+   "totals_match": null,
+   "error_types": null,
+   "warnings": [],
+   "invoice_number": null,
+   "invoice_date": null,
+   "currency": null,
+   "total": null,
+   "line_items": []
+  }
+ }
+]
