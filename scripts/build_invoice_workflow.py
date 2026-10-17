@@ -28,7 +28,6 @@ NVIDIA_CRED = {"openAiApi": {"id": "SPONP3X9OugaVEBi", "name": "NVIDIA_NIM_Free"
 PRIMARY_MODEL = os.environ.get("INV_PRIMARY_MODEL", "openai/gpt-oss-20b")
 FALLBACK_MODEL = os.environ.get("INV_FALLBACK_MODEL", "nvidia/nemotron-3-super-120b-a12b")  # other model family
 CHUNK_CHARS = 1500
-RETRY = {"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000}
 
 NUM = {"type": "number"}
 INVOICE_SCHEMA = {
@@ -166,6 +165,11 @@ return chunks.map((text, i) => ({
 
 MERGE_JS = r"""// Rebuild one invoice from the per-part extractions (primary or fallback LLM), in part order.
 // Header fields come from the first part that has them, totals from the last one.
+const failed = $input.all().find((item) => item.json.error);
+if (failed) {
+  const reason = `LLM extraction failed on primary and fallback models: ${failed.json.error?.message ?? failed.json.error}`;
+  return [{ json: { error: reason } }];
+}
 const parts = $input.all().map((item, i) => {
   let index = i;
   try { index = $('Split Into Chunks').itemMatching(i).json.chunk_index; } catch (e) {}
@@ -190,8 +194,30 @@ return [{
   },
 }];"""
 
+ERROR_JS = r"""// Any failure before extraction (missing file, OCR) ends here: the orchestrator gets { error: true }
+// and sends the claim to human review instead of the whole run crashing.
+const first = $input.first().json;
+const reason = String(first.error?.message ?? first.error ?? first.message ?? 'Unknown error');
+let sourceFile = null;
+try { sourceFile = $('Invoice Input').first().json.file_path; } catch (e) {}
+return [{
+  json: {
+    agent: 'invoice_parser', error: true, reason, source_file: sourceFile,
+    status: 'error', totals_match: null, arithmetic_issue: null, line_items: [], claimed_parts: [],
+  },
+}];"""
+
 CHECK_JS = """// Deterministic arithmetic check on the extracted invoice.
 // status: ok | arithmetic_mismatch (+15 risk points) | needs_review (not an invoice / incomplete, 0 points)
+if ($json.error) {
+  return {
+    json: {
+      agent: 'invoice_parser', error: true, reason: String($json.error),
+      source_file: $('Invoice Input').first().json.file_path,
+      status: 'error', totals_match: null, arithmetic_issue: null, line_items: [], claimed_parts: [],
+    },
+  };
+}
 const inv = $json.output || {};
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const round = (n) => Math.round(n * 1000) / 1000;
@@ -276,15 +302,43 @@ if (num(inv.total) != null && !totals.some((t) => close(t, inv.total))) {
 }
 
 const status = reviewReasons.length ? 'needs_review' : issues.length ? 'arithmetic_mismatch' : 'ok';
+
+// Fields read by the Fraud Risk & Decision agent (team contract): totals_match, arithmetic_issue, line_items.
+// type "other" (paint, consumables...) must not count as a part expected to be visible on the photos.
+const fmt = (n) => (num(n) == null ? '?' : n.toFixed(2));
+const LABELS = {
+  line_total_mismatch: (i) => `Line "${i.item}"`, labor_mismatch: () => 'Labor', subtotal_mismatch: () => 'Subtotal',
+  net_before_tax_mismatch: () => 'Total before tax', tax_line_mismatch: (i) => `Tax "${i.label}"`,
+  tax_base_mismatch: () => 'Tax bases', vat_mismatch: () => 'VAT', total_mismatch: () => 'Grand total',
+};
+const arithmeticIssue = issues.length
+  ? issues.map((i) => `${(LABELS[i.type] || (() => i.type))(i)}: printed ${fmt(i.printed)}, expected ${fmt(i.expected)}`).join('; ')
+  : null;
+const TYPES = { part: 'part', labor: 'labor' };
+const lineItems = items.map((li) => ({
+  part: li.description,
+  type: li.category ? TYPES[li.category] || 'other' : 'part',
+  quantity: num(li.quantity),
+  unit_price: num(li.unit_price),
+  line_total: num(li.line_total),
+}));
+if (laborTotal) {
+  lineItems.push({ part: 'Labor', type: 'labor', quantity: num(inv.labor.hours), unit_price: num(inv.labor.rate), line_total: laborTotal });
+}
+
 return {
   json: {
     agent: 'invoice_parser',
-    source_file: $('Invoice Input').first().json.file_path,
-    extraction_method: $('Native Text').isExecuted ? 'native_pdf_text' : 'llamaparse_ocr',
+    error: false,
+    totals_match: status === 'needs_review' ? null : issues.length === 0,
+    arithmetic_issue: arithmeticIssue,
+    line_items: lineItems,
     status,
     risk_points: status === 'arithmetic_mismatch' ? 15 : 0,
+    source_file: $('Invoice Input').first().json.file_path,
+    extraction_method: $('Native Text').isExecuted ? 'native_pdf_text' : 'llamaparse_ocr',
     invoice: inv,
-    claimed_parts: items.filter((li) => !['labor', 'consumable'].includes(li.category)).map((li) => li.description),
+    claimed_parts: lineItems.filter((li) => li.type === 'part').map((li) => li.part),
     arithmetic_check: {
       ok: issues.length === 0,
       issues,
@@ -336,11 +390,13 @@ def build(default_file=DEFAULT_FILE):
         node("When Called by Orchestrator", "n8n-nodes-base.executeWorkflowTrigger", 1.1, [0, 200],
              {"inputSource": "passthrough"}),
         node("Invoice Input", "n8n-nodes-base.set", 3.4, [220, 100],
-             set_fields({"file_path": "={{ $json.file_path || '" + default_file + "' }}"}, include_other=False)),
+             set_fields({"file_path": "={{ $json.file_path || $json.invoice_path || $json.claim?.invoice_path || '"
+                         + default_file + "' }}"}, include_other=False)),
         node("Read Invoice File", "n8n-nodes-base.readWriteFile", 1, [440, 100],
              {"fileSelector": "={{ $json.file_path }}", "options": {"dataPropertyName": "data"}},
              alwaysOutputData=True),
-        node("Check File Found", "n8n-nodes-base.code", 2, [660, 100], {"jsCode": CHECK_FILE_JS}),
+        node("Check File Found", "n8n-nodes-base.code", 2, [660, 100], {"jsCode": CHECK_FILE_JS},
+             onError="continueErrorOutput"),
         node("Extract PDF Text", "n8n-nodes-base.extractFromFile", 1, [880, 100],
              {"operation": "pdf", "binaryPropertyName": "data", "options": {}},
              onError="continueRegularOutput", alwaysOutputData=True),
@@ -358,19 +414,19 @@ def build(default_file=DEFAULT_FILE):
                 {"name": "configuration", "value": LLAMA_CONFIG},
             ]},
             "options": {},
-        }, **RETRY),
+        }, onError="continueErrorOutput"),
         node("Wait 3s", "n8n-nodes-base.wait", 1.1, [1780, 260], {"amount": 3}, webhookId="inv-wait-3s"),
         node("LlamaParse Job Status", "n8n-nodes-base.httpRequest", 4.2, [2000, 260], {
             "url": f"={LLAMA}/{{{{ $('LlamaParse Upload').first().json.id }}}}",
             "sendHeaders": True, "headerParameters": AUTH, "options": {},
-        }, **RETRY),
+        }, onError="continueErrorOutput"),
         node("Check Job Status", "n8n-nodes-base.code", 2, [2220, 260],
-             {"mode": "runOnceForEachItem", "jsCode": POLL_JS}),
+             {"mode": "runOnceForEachItem", "jsCode": POLL_JS}, onError="continueErrorOutput"),
         node("Job Done?", "n8n-nodes-base.if", 2.2, [2440, 260], bool_if("={{ $json.done }}")),
         node("LlamaParse Markdown", "n8n-nodes-base.httpRequest", 4.2, [2660, 200], {
             "url": f"={LLAMA}/{{{{ $('LlamaParse Upload').first().json.id }}}}?expand=markdown_full",
             "sendHeaders": True, "headerParameters": AUTH, "options": {},
-        }, **RETRY),
+        }, onError="continueErrorOutput"),
         node("OCR Text", "n8n-nodes-base.set", 3.4, [2880, 200],
              set_fields({"invoice_text": "={{ $json.markdown_full }}", "extraction_method": "llamaparse_ocr"},
                         include_other=False)),
@@ -394,13 +450,14 @@ def build(default_file=DEFAULT_FILE):
             "schemaType": "manual",
             "inputSchema": json.dumps(INVOICE_SCHEMA, indent=2),
             "options": {"systemPromptTemplate": SYSTEM_PROMPT},
-        }, retryOnFail=True, maxTries=2, waitBetweenTries=2000),
+        }, onError="continueRegularOutput"),  # a failed part is turned into { error } by Merge Chunks
         node("Fallback Chat Model", "@n8n/n8n-nodes-langchain.lmChatOpenAi", 1.2, [3820, 520], {
             "model": {"__rl": True, "value": FALLBACK_MODEL, "mode": "id"},
-            "options": {"temperature": 0, "timeout": 60000, "maxRetries": 1},
+            "options": {"temperature": 0, "timeout": 60000, "maxRetries": 2},
         }, credentials=NVIDIA_CRED),
         node("Collect Results", "n8n-nodes-base.merge", 3, [4060, 100]),
         node("Merge Chunks", "n8n-nodes-base.code", 2, [4280, 100], {"jsCode": MERGE_JS}),
+        node("Error Result", "n8n-nodes-base.code", 2, [4500, 420], {"jsCode": ERROR_JS}),
         node("Arithmetic Check", "n8n-nodes-base.code", 2, [4500, 100],
              {"mode": "runOnceForEachItem", "jsCode": CHECK_JS}),
     ]
@@ -410,17 +467,17 @@ def build(default_file=DEFAULT_FILE):
         "When Called by Orchestrator": main_link(["Invoice Input"]),
         "Invoice Input": main_link(["Read Invoice File"]),
         "Read Invoice File": main_link(["Check File Found"]),
-        "Check File Found": main_link(["Extract PDF Text"]),
+        "Check File Found": main_link(["Extract PDF Text"], ["Error Result"]),
         "Extract PDF Text": main_link(["Detect Text Layer"]),
         "Detect Text Layer": main_link(["Has Text Layer?"]),
         "Has Text Layer?": main_link(["Native Text"], ["LlamaParse Upload"]),
         "Native Text": main_link(["Normalize Numbers"]),
-        "LlamaParse Upload": main_link(["Wait 3s"]),
+        "LlamaParse Upload": main_link(["Wait 3s"], ["Error Result"]),
         "Wait 3s": main_link(["LlamaParse Job Status"]),
-        "LlamaParse Job Status": main_link(["Check Job Status"]),
-        "Check Job Status": main_link(["Job Done?"]),
+        "LlamaParse Job Status": main_link(["Check Job Status"], ["Error Result"]),
+        "Check Job Status": main_link(["Job Done?"], ["Error Result"]),
         "Job Done?": main_link(["LlamaParse Markdown"], ["Wait 3s"]),
-        "LlamaParse Markdown": main_link(["OCR Text"]),
+        "LlamaParse Markdown": main_link(["OCR Text"], ["Error Result"]),
         "OCR Text": main_link(["Normalize Numbers"]),
         "Normalize Numbers": main_link(["Split Into Chunks"]),
         "Split Into Chunks": main_link(["Information Extractor"]),

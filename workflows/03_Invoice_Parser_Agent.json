@@ -33,7 +33,7 @@
             {
               "id": "a0",
               "name": "file_path",
-              "value": "={{ $json.file_path || '/data/invoices/INV-001.pdf' }}",
+              "value": "={{ $json.file_path || $json.invoice_path || $json.claim?.invoice_path || '/data/invoices/INV-001.pdf' }}",
               "type": "string"
             }
           ]
@@ -78,7 +78,8 @@
         660,
         100
       ],
-      "id": "inv-check-file-found"
+      "id": "inv-check-file-found",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -208,9 +209,7 @@
         260
       ],
       "id": "inv-llamaparse-upload",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -248,9 +247,7 @@
         260
       ],
       "id": "inv-llamaparse-job-status",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -264,7 +261,8 @@
         2220,
         260
       ],
-      "id": "inv-check-job-status"
+      "id": "inv-check-job-status",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -323,9 +321,7 @@
         200
       ],
       "id": "inv-llamaparse-markdown",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -449,9 +445,7 @@
         300
       ],
       "id": "inv-fallback-extractor",
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 2000
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -463,7 +457,7 @@
         "options": {
           "temperature": 0,
           "timeout": 60000,
-          "maxRetries": 1
+          "maxRetries": 2
         }
       },
       "name": "Fallback Chat Model",
@@ -494,7 +488,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Rebuild one invoice from the per-part extractions (primary or fallback LLM), in part order.\n// Header fields come from the first part that has them, totals from the last one.\nconst parts = $input.all().map((item, i) => {\n  let index = i;\n  try { index = $('Split Into Chunks').itemMatching(i).json.chunk_index; } catch (e) {}\n  return { index, out: item.json.output || {} };\n}).sort((a, b) => a.index - b.index).map((p) => p.out);\n\nconst HEADER = ['invoice_number', 'garage_name', 'invoice_date', 'vehicle_plate', 'claim_ref', 'currency',\n  'prices_include_tax', 'labor'];\nconst TOTALS = ['subtotal', 'discount_total', 'net_before_tax', 'vat_rate', 'vat', 'tax_lines', 'other_charges', 'total'];\nconst present = (v) => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);\n\nconst invoice = { is_invoice: parts.some((p) => p.is_invoice !== false) };\nfor (const k of HEADER) { const p = parts.find((x) => present(x[k])); if (p) invoice[k] = p[k]; }\ninvoice.line_items = parts.flatMap((p) => p.line_items || []);\nfor (const k of TOTALS) { const p = [...parts].reverse().find((x) => present(x[k])); if (p) invoice[k] = p[k]; }\n\nreturn [{\n  json: {\n    output: invoice,\n    chunks: parts.length,\n    llm_fallback_used: $('Fallback Extractor').isExecuted,\n  },\n}];"
+        "jsCode": "// Rebuild one invoice from the per-part extractions (primary or fallback LLM), in part order.\n// Header fields come from the first part that has them, totals from the last one.\nconst failed = $input.all().find((item) => item.json.error);\nif (failed) {\n  const reason = `LLM extraction failed on primary and fallback models: ${failed.json.error?.message ?? failed.json.error}`;\n  return [{ json: { error: reason } }];\n}\nconst parts = $input.all().map((item, i) => {\n  let index = i;\n  try { index = $('Split Into Chunks').itemMatching(i).json.chunk_index; } catch (e) {}\n  return { index, out: item.json.output || {} };\n}).sort((a, b) => a.index - b.index).map((p) => p.out);\n\nconst HEADER = ['invoice_number', 'garage_name', 'invoice_date', 'vehicle_plate', 'claim_ref', 'currency',\n  'prices_include_tax', 'labor'];\nconst TOTALS = ['subtotal', 'discount_total', 'net_before_tax', 'vat_rate', 'vat', 'tax_lines', 'other_charges', 'total'];\nconst present = (v) => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);\n\nconst invoice = { is_invoice: parts.some((p) => p.is_invoice !== false) };\nfor (const k of HEADER) { const p = parts.find((x) => present(x[k])); if (p) invoice[k] = p[k]; }\ninvoice.line_items = parts.flatMap((p) => p.line_items || []);\nfor (const k of TOTALS) { const p = [...parts].reverse().find((x) => present(x[k])); if (p) invoice[k] = p[k]; }\n\nreturn [{\n  json: {\n    output: invoice,\n    chunks: parts.length,\n    llm_fallback_used: $('Fallback Extractor').isExecuted,\n  },\n}];"
       },
       "name": "Merge Chunks",
       "type": "n8n-nodes-base.code",
@@ -507,8 +501,21 @@
     },
     {
       "parameters": {
+        "jsCode": "// Any failure before extraction (missing file, OCR) ends here: the orchestrator gets { error: true }\n// and sends the claim to human review instead of the whole run crashing.\nconst first = $input.first().json;\nconst reason = String(first.error?.message ?? first.error ?? first.message ?? 'Unknown error');\nlet sourceFile = null;\ntry { sourceFile = $('Invoice Input').first().json.file_path; } catch (e) {}\nreturn [{\n  json: {\n    agent: 'invoice_parser', error: true, reason, source_file: sourceFile,\n    status: 'error', totals_match: null, arithmetic_issue: null, line_items: [], claimed_parts: [],\n  },\n}];"
+      },
+      "name": "Error Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        420
+      ],
+      "id": "inv-error-result"
+    },
+    {
+      "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Deterministic arithmetic check on the extracted invoice.\n// status: ok | arithmetic_mismatch (+15 risk points) | needs_review (not an invoice / incomplete, 0 points)\nconst inv = $json.output || {};\nconst num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);\nconst round = (n) => Math.round(n * 1000) / 1000;\nconst close = (a, b) => Math.abs(a - b) <= Math.max(0.05, Math.abs(b) * 0.001);\nconst pct = (r) => (r > 1 ? r / 100 : r);\nconst sum = (arr, f) => arr.reduce((s, x) => s + (num(f(x)) ?? 0), 0);\n\nconst issues = [];\nconst reviewReasons = [];\nconst uncheckedLines = [];\nconst items = inv.line_items || [];\n\nif (inv.is_invoice === false) reviewReasons.push('not_an_invoice');\nif (!items.length) reviewReasons.push('no_line_items');\nif (num(inv.total) == null) reviewReasons.push('no_total');\n\n// 1. Each line: quantity x unit price, minus its discount\nfor (const li of items) {\n  const qty = num(li.quantity);\n  const price = num(li.unit_price);\n  const printed = num(li.line_total);\n  if (printed == null) { reviewReasons.push(`line_without_amount: ${li.description}`); continue; }\n  if (qty == null || price == null) { uncheckedLines.push(li.description); continue; }\n  const gross = qty * price;\n  const candidates = [gross - (num(li.discount_amount) ?? 0)];\n  if (num(li.discount_percent) != null) candidates.push(gross * (1 - pct(li.discount_percent)));\n  if (!candidates.some((c) => close(c, printed))) {\n    issues.push({ type: 'line_total_mismatch', item: li.description, printed, expected: round(candidates.at(-1)) });\n  }\n}\n\n// 2. Labor printed outside the table (ignored if the same amount is also a \"labor\" line)\nlet laborTotal = num(inv.labor?.total) ?? 0;\nif (num(inv.labor?.hours) != null && num(inv.labor?.rate) != null && !close(inv.labor.hours * inv.labor.rate, laborTotal)) {\n  issues.push({ type: 'labor_mismatch', printed: laborTotal, expected: round(inv.labor.hours * inv.labor.rate) });\n}\nif (items.some((li) => li.category === 'labor' && close(num(li.line_total) ?? 0, laborTotal))) laborTotal = 0;\n\n// 3. Subtotal, discount, net before tax\nconst linesSum = round(sum(items, (li) => li.line_total) + laborTotal);\nconst discount = num(inv.discount_total) ?? 0;\nlet base = linesSum - discount;\nconst subtotal = num(inv.subtotal);\nif (subtotal != null) {\n  if (close(subtotal, linesSum)) base = subtotal - discount;\n  else if (discount && close(subtotal, linesSum - discount)) base = subtotal;\n  else {\n    issues.push({ type: 'subtotal_mismatch', printed: subtotal, expected: linesSum });\n    base = subtotal - discount;\n  }\n}\nconst net = num(inv.net_before_tax);\nif (net != null) {\n  if (!close(net, base)) issues.push({ type: 'net_before_tax_mismatch', printed: net, expected: round(base) });\n  base = net;\n}\n\n// 4. Taxes (one rate or several); with tax-inclusive prices the tax is informative only\nconst taxLines = inv.tax_lines || [];\nfor (const t of taxLines) {\n  if (num(t.rate) != null && num(t.base) != null && num(t.amount) != null && !close(t.base * pct(t.rate), t.amount)) {\n    issues.push({ type: 'tax_line_mismatch', label: t.label, printed: t.amount, expected: round(t.base * pct(t.rate)) });\n  }\n}\nif (!inv.prices_include_tax) {\n  if (taxLines.length && taxLines.every((t) => num(t.base) != null) && !close(sum(taxLines, (t) => t.base), base)) {\n    issues.push({ type: 'tax_base_mismatch', printed: round(sum(taxLines, (t) => t.base)), expected: round(base) });\n  }\n  if (!taxLines.length && num(inv.vat) != null && num(inv.vat_rate) != null && !close(base * pct(inv.vat_rate), inv.vat)) {\n    issues.push({ type: 'vat_mismatch', printed: inv.vat, expected: round(base * pct(inv.vat_rate)) });\n  }\n}\nconst tax = taxLines.length ? sum(taxLines, (t) => t.amount) : (num(inv.vat) ?? 0);\n\n// 5. Grand total = net + tax + other charges (timbre fiscal...). Both the tax-exclusive and the\n// tax-inclusive readings are accepted, so a wrong prices_include_tax flag from the LLM is not a fraud signal.\nconst charges = sum(inv.other_charges || [], (c) => c.amount);\nconst totals = [round(base + tax + charges), round(base + charges)];\nconst expectedTotal = inv.prices_include_tax ? totals[1] : totals[0];\nif (num(inv.total) != null && !totals.some((t) => close(t, inv.total))) {\n  issues.push({ type: 'total_mismatch', printed: inv.total, expected: expectedTotal });\n}\n\nconst status = reviewReasons.length ? 'needs_review' : issues.length ? 'arithmetic_mismatch' : 'ok';\nreturn {\n  json: {\n    agent: 'invoice_parser',\n    source_file: $('Invoice Input').first().json.file_path,\n    extraction_method: $('Native Text').isExecuted ? 'native_pdf_text' : 'llamaparse_ocr',\n    status,\n    risk_points: status === 'arithmetic_mismatch' ? 15 : 0,\n    invoice: inv,\n    claimed_parts: items.filter((li) => !['labor', 'consumable'].includes(li.category)).map((li) => li.description),\n    arithmetic_check: {\n      ok: issues.length === 0,\n      issues,\n      unchecked_lines: uncheckedLines,\n      computed_lines_sum: linesSum,\n      computed_total: expectedTotal,\n    },\n    review_reasons: reviewReasons,\n    extraction: { chunks: $json.chunks, llm_fallback_used: $json.llm_fallback_used },\n  },\n};"
+        "jsCode": "// Deterministic arithmetic check on the extracted invoice.\n// status: ok | arithmetic_mismatch (+15 risk points) | needs_review (not an invoice / incomplete, 0 points)\nif ($json.error) {\n  return {\n    json: {\n      agent: 'invoice_parser', error: true, reason: String($json.error),\n      source_file: $('Invoice Input').first().json.file_path,\n      status: 'error', totals_match: null, arithmetic_issue: null, line_items: [], claimed_parts: [],\n    },\n  };\n}\nconst inv = $json.output || {};\nconst num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);\nconst round = (n) => Math.round(n * 1000) / 1000;\nconst close = (a, b) => Math.abs(a - b) <= Math.max(0.05, Math.abs(b) * 0.001);\nconst pct = (r) => (r > 1 ? r / 100 : r);\nconst sum = (arr, f) => arr.reduce((s, x) => s + (num(f(x)) ?? 0), 0);\n\nconst issues = [];\nconst reviewReasons = [];\nconst uncheckedLines = [];\nconst items = inv.line_items || [];\n\nif (inv.is_invoice === false) reviewReasons.push('not_an_invoice');\nif (!items.length) reviewReasons.push('no_line_items');\nif (num(inv.total) == null) reviewReasons.push('no_total');\n\n// 1. Each line: quantity x unit price, minus its discount\nfor (const li of items) {\n  const qty = num(li.quantity);\n  const price = num(li.unit_price);\n  const printed = num(li.line_total);\n  if (printed == null) { reviewReasons.push(`line_without_amount: ${li.description}`); continue; }\n  if (qty == null || price == null) { uncheckedLines.push(li.description); continue; }\n  const gross = qty * price;\n  const candidates = [gross - (num(li.discount_amount) ?? 0)];\n  if (num(li.discount_percent) != null) candidates.push(gross * (1 - pct(li.discount_percent)));\n  if (!candidates.some((c) => close(c, printed))) {\n    issues.push({ type: 'line_total_mismatch', item: li.description, printed, expected: round(candidates.at(-1)) });\n  }\n}\n\n// 2. Labor printed outside the table (ignored if the same amount is also a \"labor\" line)\nlet laborTotal = num(inv.labor?.total) ?? 0;\nif (num(inv.labor?.hours) != null && num(inv.labor?.rate) != null && !close(inv.labor.hours * inv.labor.rate, laborTotal)) {\n  issues.push({ type: 'labor_mismatch', printed: laborTotal, expected: round(inv.labor.hours * inv.labor.rate) });\n}\nif (items.some((li) => li.category === 'labor' && close(num(li.line_total) ?? 0, laborTotal))) laborTotal = 0;\n\n// 3. Subtotal, discount, net before tax\nconst linesSum = round(sum(items, (li) => li.line_total) + laborTotal);\nconst discount = num(inv.discount_total) ?? 0;\nlet base = linesSum - discount;\nconst subtotal = num(inv.subtotal);\nif (subtotal != null) {\n  if (close(subtotal, linesSum)) base = subtotal - discount;\n  else if (discount && close(subtotal, linesSum - discount)) base = subtotal;\n  else {\n    issues.push({ type: 'subtotal_mismatch', printed: subtotal, expected: linesSum });\n    base = subtotal - discount;\n  }\n}\nconst net = num(inv.net_before_tax);\nif (net != null) {\n  if (!close(net, base)) issues.push({ type: 'net_before_tax_mismatch', printed: net, expected: round(base) });\n  base = net;\n}\n\n// 4. Taxes (one rate or several); with tax-inclusive prices the tax is informative only\nconst taxLines = inv.tax_lines || [];\nfor (const t of taxLines) {\n  if (num(t.rate) != null && num(t.base) != null && num(t.amount) != null && !close(t.base * pct(t.rate), t.amount)) {\n    issues.push({ type: 'tax_line_mismatch', label: t.label, printed: t.amount, expected: round(t.base * pct(t.rate)) });\n  }\n}\nif (!inv.prices_include_tax) {\n  if (taxLines.length && taxLines.every((t) => num(t.base) != null) && !close(sum(taxLines, (t) => t.base), base)) {\n    issues.push({ type: 'tax_base_mismatch', printed: round(sum(taxLines, (t) => t.base)), expected: round(base) });\n  }\n  if (!taxLines.length && num(inv.vat) != null && num(inv.vat_rate) != null && !close(base * pct(inv.vat_rate), inv.vat)) {\n    issues.push({ type: 'vat_mismatch', printed: inv.vat, expected: round(base * pct(inv.vat_rate)) });\n  }\n}\nconst tax = taxLines.length ? sum(taxLines, (t) => t.amount) : (num(inv.vat) ?? 0);\n\n// 5. Grand total = net + tax + other charges (timbre fiscal...). Both the tax-exclusive and the\n// tax-inclusive readings are accepted, so a wrong prices_include_tax flag from the LLM is not a fraud signal.\nconst charges = sum(inv.other_charges || [], (c) => c.amount);\nconst totals = [round(base + tax + charges), round(base + charges)];\nconst expectedTotal = inv.prices_include_tax ? totals[1] : totals[0];\nif (num(inv.total) != null && !totals.some((t) => close(t, inv.total))) {\n  issues.push({ type: 'total_mismatch', printed: inv.total, expected: expectedTotal });\n}\n\nconst status = reviewReasons.length ? 'needs_review' : issues.length ? 'arithmetic_mismatch' : 'ok';\n\n// Fields read by the Fraud Risk & Decision agent (team contract): totals_match, arithmetic_issue, line_items.\n// type \"other\" (paint, consumables...) must not count as a part expected to be visible on the photos.\nconst fmt = (n) => (num(n) == null ? '?' : n.toFixed(2));\nconst LABELS = {\n  line_total_mismatch: (i) => `Line \"${i.item}\"`, labor_mismatch: () => 'Labor', subtotal_mismatch: () => 'Subtotal',\n  net_before_tax_mismatch: () => 'Total before tax', tax_line_mismatch: (i) => `Tax \"${i.label}\"`,\n  tax_base_mismatch: () => 'Tax bases', vat_mismatch: () => 'VAT', total_mismatch: () => 'Grand total',\n};\nconst arithmeticIssue = issues.length\n  ? issues.map((i) => `${(LABELS[i.type] || (() => i.type))(i)}: printed ${fmt(i.printed)}, expected ${fmt(i.expected)}`).join('; ')\n  : null;\nconst TYPES = { part: 'part', labor: 'labor' };\nconst lineItems = items.map((li) => ({\n  part: li.description,\n  type: li.category ? TYPES[li.category] || 'other' : 'part',\n  quantity: num(li.quantity),\n  unit_price: num(li.unit_price),\n  line_total: num(li.line_total),\n}));\nif (laborTotal) {\n  lineItems.push({ part: 'Labor', type: 'labor', quantity: num(inv.labor.hours), unit_price: num(inv.labor.rate), line_total: laborTotal });\n}\n\nreturn {\n  json: {\n    agent: 'invoice_parser',\n    error: false,\n    totals_match: status === 'needs_review' ? null : issues.length === 0,\n    arithmetic_issue: arithmeticIssue,\n    line_items: lineItems,\n    status,\n    risk_points: status === 'arithmetic_mismatch' ? 15 : 0,\n    source_file: $('Invoice Input').first().json.file_path,\n    extraction_method: $('Native Text').isExecuted ? 'native_pdf_text' : 'llamaparse_ocr',\n    invoice: inv,\n    claimed_parts: lineItems.filter((li) => li.type === 'part').map((li) => li.part),\n    arithmetic_check: {\n      ok: issues.length === 0,\n      issues,\n      unchecked_lines: uncheckedLines,\n      computed_lines_sum: linesSum,\n      computed_total: expectedTotal,\n    },\n    review_reasons: reviewReasons,\n    extraction: { chunks: $json.chunks, llm_fallback_used: $json.llm_fallback_used },\n  },\n};"
       },
       "name": "Arithmetic Check",
       "type": "n8n-nodes-base.code",
@@ -570,6 +577,13 @@
         [
           {
             "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
             "type": "main",
             "index": 0
           }
@@ -635,6 +649,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Error Result",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -657,6 +678,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Error Result",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -665,6 +693,13 @@
         [
           {
             "node": "Job Done?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
             "type": "main",
             "index": 0
           }
@@ -694,6 +729,13 @@
         [
           {
             "node": "OCR Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
             "type": "main",
             "index": 0
           }

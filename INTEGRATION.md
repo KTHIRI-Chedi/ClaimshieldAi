@@ -55,12 +55,33 @@ Chaque agent **reçoit** et **renvoie** un format fixe. Tant que le contrat est 
 ```
 
 ### Sortie : agent Facture (`03`), ✅ implémenté
+**Entrée** : `file_path`, `invoice_path` ou `claim.invoice_path` (le premier présent est utilisé).
+
+**Champs lus par l'agent Fraude & Décision** (format validé avec lui) :
+```json
+{
+  "error": false,
+  "totals_match": false,
+  "arithmetic_issue": "Line \"Right door\": printed 1190.00, expected 890.00",
+  "line_items": [
+    { "part": "Right door", "type": "part", "quantity": 1, "unit_price": 890, "line_total": 1190 },
+    { "part": "Paint ingredients", "type": "other", "quantity": 1, "unit_price": 85, "line_total": 85 },
+    { "part": "Labor", "type": "labor", "quantity": 5, "unit_price": 45, "line_total": 225 }
+  ]
+}
+```
+- `totals_match` : `true` si les calculs sont justes, `false` en cas d'écart (+15 points), et **`null` si la facture est illisible ou si ce n'est pas une facture** (`status: needs_review`). `null` ne doit pas ajouter de points de fraude : la déclaration part en revue humaine.
+- `arithmetic_issue` : texte lisible (plusieurs écarts sont séparés par `; `), ou `null`.
+- `line_items[].type` : `part` (pièce), `labor` (main-d'œuvre, y compris quand elle est imprimée hors du tableau) ou **`other`** (peinture, consommables, divers). **`other` ne doit pas compter dans la règle « pièce facturée non visible sur les photos »**.
+- En cas d'échec (fichier introuvable, OCR, ou les deux LLM), le workflow **ne plante pas** : il renvoie `{ "error": true, "reason": "...", "status": "error", "totals_match": null, "line_items": [] }`.
+
+**Détail complet** (en plus des champs ci-dessus) :
 ```json
 {
   "agent": "invoice_parser",
   "source_file": "/data/invoices/INV-001.pdf",
   "extraction_method": "native_pdf_text | llamaparse_ocr",
-  "status": "ok | arithmetic_mismatch | needs_review",
+  "status": "ok | arithmetic_mismatch | needs_review | error",
   "risk_points": 0,
   "invoice": {
     "is_invoice": true, "invoice_number": "INV-001", "garage_name": "...", "invoice_date": "2026-09-12",
@@ -78,9 +99,8 @@ Chaque agent **reçoit** et **renvoie** un format fixe. Tant que le contrat est 
   "review_reasons": []
 }
 ```
-- `risk_points` is 15 only when `status = arithmetic_mismatch`. `needs_review` (not an invoice, incomplete) never adds fraud points: the orchestrator sends it to human review.
-- `claimed_parts` excludes labor and consumables: it is the list to compare with the parts visible in the photos.
-- If the file is missing, the sub-workflow fails with `Invoice file not found: <path>`.
+- `risk_points` vaut 15 uniquement quand `status = arithmetic_mismatch`.
+- `claimed_parts` = les `line_items` de type `part` : c'est la liste à comparer avec les pièces visibles sur les photos.
 
 ### Sortie : agent Photos (`04`), à implémenter
 ```json

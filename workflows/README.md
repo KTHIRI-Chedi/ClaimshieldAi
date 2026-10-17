@@ -1,8 +1,8 @@
 # Invoice Parser Agent (`03_Invoice_Parser_Agent`)
 
 ## Flow
-1. **Input**: `file_path` of a file under `/data` (PDF, JPG or PNG), from the manual trigger or from the orchestrator through *Execute Workflow*.
-2. **Check File Found**: if the file does not exist, the workflow fails with `Invoice file not found: <path>`. It never silently produces no output.
+1. **Input**: `file_path`, `invoice_path` or `claim.invoice_path` of a file under `/data` (PDF, JPG or PNG), from the manual trigger or from the orchestrator through *Execute Workflow*.
+2. **Check File Found**: if the file does not exist, the workflow returns `{ error: true, reason: "Invoice file not found: <path>" }` through **Error Result**. LlamaParse failures and a part failing on both LLMs end the same way, so the orchestrator never crashes and sends the claim to human review.
 3. **Native extraction** (`Extract From File`): the text layer of a PDF is used directly only if it contains the amounts (≥ 50 characters and ≥ 2 amounts). Scans, photos and PDFs whose text is only a header or footer go to OCR.
 4. **OCR**: LlamaParse **v2 API** (`/api/v2/parse`, tier `cost_effective`). The file is uploaded, `job.status` is polled every 3 s until `COMPLETED`, then the result is fetched with `?expand=markdown_full`.
 5. **LLM reliability**:
@@ -14,6 +14,8 @@
    - `ok`;
    - `arithmetic_mismatch`: `risk_points = 15`, details in `arithmetic_check.issues` (line, labor, subtotal, net, VAT, tax base, total);
    - `needs_review`: not an invoice, no line items or no total. `risk_points = 0`, reasons in `review_reasons`. An unreadable document is not a fraud signal.
+
+   The output starts with the fields read by the Fraud Risk & Decision agent: `error`, `totals_match` (`true`, `false`, or `null` for needs_review), `arithmetic_issue` (readable text or `null`), and `line_items[]` as `{ part, type: part|labor|other, quantity, unit_price, line_total }`. See the contract in `INTEGRATION.md`.
 
    Tolerance: max(0.05, 0.1 % of the amount). Labor that is also listed as a line item is not counted twice. Lines without a quantity or unit price are listed in `unchecked_lines`.
 

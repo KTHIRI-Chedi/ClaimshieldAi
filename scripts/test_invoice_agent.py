@@ -48,8 +48,12 @@ def execute():
 def result_of(data):
     run = data["data"]["resultData"]
     err = run.get("error", {}).get("message")
-    check = run["runData"].get("Arithmetic Check")
-    res = check[0]["data"]["main"][0][0]["json"] if check else None
+    # The sub-workflow returns the output of its last node: "Arithmetic Check", or "Error Result"
+    last = run["runData"].get(run.get("lastNodeExecuted") or "", [])
+    items = last[-1]["data"]["main"][0] if last and last[-1].get("data") else []
+    res = items[0]["json"] if items else None
+    if res and res.get("error"):
+        return None, res.get("reason")
     return res, err
 
 
@@ -82,6 +86,16 @@ def main():
                     problems.append(f"total {printed} != {exp['total']}")
             if exp.get("n_lines") and len(res["invoice"].get("line_items", [])) < exp["n_lines"]:
                 problems.append(f"{len(res['invoice'].get('line_items', []))} lines < {exp['n_lines']}")
+            # Contract read by the Fraud Risk & Decision agent
+            want_match = {"ok": True, "arithmetic_mismatch": False, "needs_review": None}[exp["expected_status"]]
+            if res.get("totals_match") is not want_match:
+                problems.append(f"totals_match {res.get('totals_match')} != {want_match}")
+            if (res.get("arithmetic_issue") is None) != (exp["expected_status"] != "arithmetic_mismatch"):
+                problems.append(f"arithmetic_issue {res.get('arithmetic_issue')!r}")
+            if exp["expected_status"] != "needs_review" and not all(
+                    {"part", "type", "quantity", "unit_price"} <= set(li) and li["type"] in ("part", "labor", "other")
+                    for li in res.get("line_items") or [{}]):
+                problems.append("line_items do not follow { part, type, quantity, unit_price }")
         failures += bool(problems)
         detail = "; ".join(problems) if problems else (err or "")
         status = res["status"] if res else "error"
@@ -92,6 +106,8 @@ def main():
         issues = [i["type"] for i in res["arithmetic_check"]["issues"]] + res["review_reasons"] if res else []
         rows.append((name, "PASS" if not problems else "FAIL", status, method, f"{secs:.0f}s", ",".join(issues), detail))
         print(" | ".join(rows[-1]), flush=True)
+        if res and res.get("arithmetic_issue"):
+            print("    arithmetic_issue:", res["arithmetic_issue"], flush=True)
         if res and problems:
             print(json.dumps(res, indent=1, ensure_ascii=False)[:3000], flush=True)
 
