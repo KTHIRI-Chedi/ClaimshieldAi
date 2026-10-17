@@ -1,2 +1,4 @@
 .env
 __pycache__/
+data/invoices/real/*
+!data/invoices/real/README.md

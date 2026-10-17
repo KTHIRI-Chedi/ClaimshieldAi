@@ -34,6 +34,7 @@ docker exec claimshield_n8n n8n import:workflow --input=/tmp/inv.json
 ```bash
 python scripts/test_invoice_agent.py               # all invoices + missing-file case
 python scripts/test_invoice_agent.py INV-005.pdf   # a single file
+python scripts/run_invoice_agent.py data/invoices/real/x.pdf   # any file, e.g. a real invoice (see data/invoices/real/README.md)
 INV_PRIMARY_MODEL=invalid/model python scripts/test_invoice_agent.py INV-001.pdf   # force the fallback LLM
 python scripts/build_invoice_workflow.py           # then rebuild and reimport the normal workflow
 ```

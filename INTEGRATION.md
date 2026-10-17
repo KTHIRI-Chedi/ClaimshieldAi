@@ -163,6 +163,9 @@ docker compose up -d
 | `Local_Qdrant` | Qdrant API (`http://qdrant:6333`) | base vectorielle |
 | `Cohere account` | Cohere API | reranker |
 | `OpenAI account` | OpenAI API | vision (GPT-4o) |
+| `Groq` *(facultatif)* | OpenAI API, base URL `https://api.groq.com/openai/v1`, clé gratuite sur console.groq.com | LLM de secours de l'agent Facture, chez un autre fournisseur que NVIDIA |
+
+> L'agent Facture se régénère avec `python scripts/build_invoice_workflow.py`. Le script retrouve les credentials **par leur nom** dans votre base n8n locale (les IDs diffèrent d'une machine à l'autre), puis il faut réimporter le JSON (§4.3).
 
 3. Importer tous les workflows :
 ```bash

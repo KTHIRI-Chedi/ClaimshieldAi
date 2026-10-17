@@ -7,15 +7,22 @@ Flow: input -> read file (error if missing) -> native PDF text extraction
   -> Normalize Numbers (French amounts -> dot decimals)
   -> Split Into Chunks (long invoices: ~1500-char parts cut between rows)
   -> Information Extractor (NVIDIA, one call per part)
-       on error -> Fallback Extractor (second NVIDIA model, other family) for that part
+       on error -> Fallback Extractor for that part: Groq (other provider) if a "Groq" credential
+                   exists in n8n, otherwise a second NVIDIA model of another family
   -> Merge Chunks (one invoice JSON)
   -> Arithmetic Check (Code): status ok | arithmetic_mismatch | needs_review
 
 Usage: python scripts/build_invoice_workflow.py [default_file_path]
 Env: INV_PRIMARY_MODEL / INV_FALLBACK_MODEL override the model ids (e.g. an invalid primary forces the fallback).
+
+Credentials are looked up BY NAME in the local n8n database (ids differ on every machine), so each
+teammate gets a workflow wired to their own credentials. Names expected in n8n:
+  NVIDIA_NIM_Free  (OpenAI type, base URL https://integrate.api.nvidia.com/v1)   required
+  Groq             (OpenAI type, base URL https://api.groq.com/openai/v1)        optional fallback
 """
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -24,9 +31,26 @@ LLAMA = "https://api.cloud.llamaindex.ai/api/v2/parse"  # v1 is disabled for new
 LLAMA_CONFIG = '{"tier": "cost_effective", "version": "latest"}'
 DEFAULT_FILE = "/data/invoices/INV-001.pdf"
 AUTH = {"parameters": [{"name": "Authorization", "value": "=Bearer {{ $env.LLAMA_CLOUD_API_KEY }}"}]}
-NVIDIA_CRED = {"openAiApi": {"id": "SPONP3X9OugaVEBi", "name": "NVIDIA_NIM_Free"}}
+N8N_DB = OUT.parent.parent / "n8n_data" / "database.sqlite"
+
+
+def credential(name, type_="openAiApi"):
+    """n8n credential reference {type: {id, name}} for the credential with this name, or None."""
+    try:
+        db = sqlite3.connect(f"file:{N8N_DB.as_posix()}?mode=ro", uri=True)
+        row = db.execute("select id from credentials_entity where name = ? and type = ?", (name, type_)).fetchone()
+    except sqlite3.Error:
+        row = None
+    return {type_: {"id": row[0], "name": name}} if row else None
+
+
+NVIDIA_CRED = credential("NVIDIA_NIM_Free") or {"openAiApi": {"id": "SPONP3X9OugaVEBi", "name": "NVIDIA_NIM_Free"}}
+GROQ_CRED = credential("Groq")
 PRIMARY_MODEL = os.environ.get("INV_PRIMARY_MODEL", "openai/gpt-oss-20b")
-FALLBACK_MODEL = os.environ.get("INV_FALLBACK_MODEL", "nvidia/nemotron-3-super-120b-a12b")  # other model family
+# Best practice: the fallback runs on another provider, so an NVIDIA outage does not stop the agent.
+FALLBACK_CRED = GROQ_CRED or NVIDIA_CRED
+FALLBACK_MODEL = os.environ.get(
+    "INV_FALLBACK_MODEL", "llama-3.3-70b-versatile" if GROQ_CRED else "nvidia/nemotron-3-super-120b-a12b")
 CHUNK_CHARS = 1500
 
 NUM = {"type": "number"}
@@ -506,7 +530,7 @@ def build(default_file=DEFAULT_FILE):
         node("Fallback Chat Model", "@n8n/n8n-nodes-langchain.lmChatOpenAi", 1.2, [3820, 520], {
             "model": {"__rl": True, "value": FALLBACK_MODEL, "mode": "id"},
             "options": {"temperature": 0, "timeout": 60000, "maxRetries": 2},
-        }, credentials=NVIDIA_CRED),
+        }, credentials=FALLBACK_CRED),
         node("Collect Results", "n8n-nodes-base.merge", 3, [4060, 100]),
         node("Merge Chunks", "n8n-nodes-base.code", 2, [4280, 100], {"jsCode": MERGE_JS}),
         node("Error Result", "n8n-nodes-base.code", 2, [4500, 420], {"jsCode": ERROR_JS}),
