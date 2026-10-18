@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claimshield/agent_result/1.0",
+  "title": "ClaimShield agent result",
+  "description": "What every ClaimShield analysis agent returns to the orchestrator, so the Fraud Risk & Decision agent can combine them the same way. Agent-specific data goes in `details`.",
+  "type": "object",
+  "required": ["agent", "schema_version", "claim_id", "status", "score", "score_max", "score_normalized", "weighted_score", "agent_risk_level", "warning_signs", "summary"],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "description": "Which agent produced this result.",
+      "examples": ["incident_plausibility", "visual_inspection", "invoice_parser", "policy_rag"]
+    },
+    "schema_version": { "const": "1.0" },
+    "claim_id": { "type": "string" },
+    "status": {
+      "enum": ["ok", "partial", "failed"],
+      "description": "ok = all checks ran; partial = some checks skipped (e.g. a service was down), the score covers the rest; failed = the agent could not run, score is 0 and must not count as 'no risk'."
+    },
+    "score": {
+      "type": "number", "minimum": 0,
+      "description": "Points this agent adds to the claim's rule score (sum of warning_signs[].points)."
+    },
+    "score_max": { "type": "number", "minimum": 0, "description": "Highest score this agent can give." },
+    "score_normalized": { "type": "number", "minimum": 0, "maximum": 1, "description": "score / score_max, for comparing agents on one scale." },
+    "weighted_score": {
+      "type": "number", "minimum": 0,
+      "description": "Points weighted by confidence (high 1.0, medium 0.7, low 0.4). Lets the decision agent discount weak signals."
+    },
+    "agent_risk_level": {
+      "enum": ["low", "medium", "high"],
+      "description": "This agent's own reading of its score. NOT the claim's route: only the Fraud Risk & Decision agent decides that."
+    },
+    "warning_signs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "points", "confidence", "evidence"],
+        "properties": {
+          "code": { "type": "string", "description": "Stable identifier, UPPER_SNAKE_CASE." },
+          "points": { "type": "number", "minimum": 0 },
+          "confidence": { "enum": ["high", "medium", "low"] },
+          "evidence": { "type": "string", "description": "One sentence an adjuster can verify. Never shown to the customer." }
+        }
+      }
+    },
+    "summary": { "type": "string", "description": "One line for the adjuster's Slack message and the audit log." },
+    "details": { "type": "object", "description": "Agent-specific data for the audit log." }
+  }
+}

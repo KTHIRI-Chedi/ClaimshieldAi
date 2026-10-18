@@ -1,0 +1,39 @@
+{
+  "examples": {
+    "train": 2000,
+    "valid": 150,
+    "test": 200
+  },
+  "seed": 42,
+  "prompt_version": "reconstruction-ft1",
+  "languages": {
+    "fr": 689,
+    "en": 893,
+    "ar": 418
+  },
+  "scenarios": {
+    "glass_damage": 106,
+    "vandalism": 134,
+    "vague": 112,
+    "hail": 73,
+    "parking_scrape": 160,
+    "other_reversed_into_me": 105,
+    "single_vehicle_front": 187,
+    "reversing_object": 152,
+    "sideswipe": 169,
+    "rear_end_struck": 289,
+    "side_impact": 212,
+    "animal": 101,
+    "rear_end_striking": 200
+  },
+  "flags": {
+    "hedge": 316,
+    "contradiction": 288,
+    "fact_dropped": 223,
+    "injection": 99
+  },
+  "approx_tokens_per_example": {
+    "mean": 382,
+    "max": 552
+  }
+}

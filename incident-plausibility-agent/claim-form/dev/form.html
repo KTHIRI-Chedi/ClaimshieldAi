@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaimShield AI · File a claim</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #5d6677; --line: #d9dde5;
+    --accent: #1f5fd1; --accent-text: #ffffff; --danger: #b42318; --danger-bg: #fdecea;
+    --ok: #146c43; --ok-bg: #e7f5ee; --focus: #8fb2f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e3542;
+      --accent: #5b8ff0; --accent-text: #0b0e13; --danger: #ff8a80; --danger-bg: #3a1d1b;
+      --ok: #7fd1a6; --ok-bg: #16302a; --focus: #3c5f9e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  header h1 { margin: 0 0 4px; font-size: 1.6rem; }
+  header p { margin: 0 0 20px; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; margin-bottom: 16px; }
+  section h2 { margin: 0 0 12px; font-size: 1.05rem; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  label:first-of-type { margin-top: 0; }
+  .hint { color: var(--muted); font-size: .875rem; font-weight: 400; margin: 2px 0 0; }
+  input[type=text], input[type=email], input[type=number], input[type=datetime-local],
+  select, textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--card); color: var(--text); font: inherit; }
+  textarea { min-height: 120px; resize: vertical; }
+  input:focus, select:focus, textarea:focus, button:focus-visible {
+    outline: 3px solid var(--focus); outline-offset: 1px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--line); padding: 10px 14px;
+    background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+    font-weight: 600; width: 100%; padding: 14px; }
+  button:disabled { opacity: .6; cursor: progress; }
+  .search { display: flex; gap: 8px; }
+  .search input { flex: 1; }
+  .tools { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+  #map { height: 320px; border-radius: 8px; border: 1px solid var(--line); margin-top: 8px; }
+  #results { list-style: none; margin: 6px 0 0; padding: 0; }
+  #results li button { width: 100%; text-align: left; border-radius: 0; border-width: 0 0 1px; }
+  .address { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg);
+    font-size: .925rem; }
+  .address.empty { color: var(--muted); }
+  .previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-top: 8px; }
+  .previews img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+  .consent { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; margin: 0; }
+  .consent input { margin-top: 4px; }
+  .msg { padding: 12px 14px; border-radius: 8px; margin: 0 0 16px; }
+  .msg.error { background: var(--danger-bg); color: var(--danger); }
+  .msg.ok { background: var(--ok-bg); color: var(--ok); }
+  .msg ul { margin: 6px 0 0; padding-left: 20px; }
+  .field-error { color: var(--danger); font-size: .875rem; margin-top: 4px; }
+  .claim-id { font-size: 1.4rem; font-weight: 700; letter-spacing: .02em; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>File a motor claim</h1>
+    <p>Private vehicle damage: collision, vandalism or broken glass. It takes about 5 minutes.</p>
+  </header>
+
+  <div id="banner" role="alert" hidden></div>
+
+  <form id="claim" novalidate>
+    <section>
+      <h2>1. Your policy</h2>
+      <div class="row">
+        <div>
+          <label for="policy_id">Policy number</label>
+          <input id="policy_id" name="policy_id" type="text" autocomplete="off" required placeholder="e.g. POL-104233">
+        </div>
+        <div>
+          <label for="contact_email">Email</label>
+          <input id="contact_email" name="contact_email" type="email" autocomplete="email" required>
+          <p class="hint">We send the decision here.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. What happened</h2>
+      <div class="row">
+        <div>
+          <label for="claim_type">Type of damage</label>
+          <select id="claim_type" name="claim_type" required>
+            <option value="">Choose…</option>
+            <option value="collision">Collision</option>
+            <option value="vandalism">Vandalism</option>
+            <option value="glass">Broken glass</option>
+          </select>
+        </div>
+        <div>
+          <label for="incident_datetime">Date and time</label>
+          <input id="incident_datetime" name="incident_datetime" type="datetime-local" required>
+        </div>
+      </div>
+      <label for="description">Describe the incident</label>
+      <p class="hint">Say what your car was doing, what hit it and from which side, and the road and weather conditions.</p>
+      <textarea id="description" name="description" maxlength="4000" required></textarea>
+      <p class="hint"><span id="desc-count">0</span> / 4000 characters, at least 20</p>
+      <label for="claimed_amount">Claimed amount (TND)</label>
+      <input id="claimed_amount" name="claimed_amount" type="number" min="1" step="0.001" inputmode="decimal" required>
+    </section>
+
+    <section>
+      <h2>3. Where it happened</h2>
+      <p class="hint" style="margin-top:0">Tap the map at the exact spot, or search for the street first. You can drag the pin.</p>
+      <div class="search">
+        <input id="search" type="text" placeholder="Search a street or place" aria-label="Search a street or place">
+        <button type="button" id="search-btn">Search</button>
+      </div>
+      <ul id="results"></ul>
+      <div class="tools">
+        <button type="button" id="gps-btn">📍 Use my current location</button>
+      </div>
+      <div id="map" role="application" aria-label="Map. Tap to place the incident pin."></div>
+      <div id="address" class="address empty" dir="auto">No location selected yet.</div>
+      <input type="hidden" id="incident_lat" name="incident_lat">
+      <input type="hidden" id="incident_lon" name="incident_lon">
+      <input type="hidden" id="incident_location" name="incident_location">
+    </section>
+
+    <section>
+      <h2>4. Photos and invoice</h2>
+      <label for="photos">Damage photos (1 to 8)</label>
+      <p class="hint">JPG or PNG. Include one photo that shows the whole car.</p>
+      <input id="photos" name="photos" type="file" accept="image/jpeg,image/png" multiple required>
+      <div id="previews" class="previews"></div>
+      <label for="invoice">Repair invoice or quote (PDF)</label>
+      <input id="invoice" name="invoice" type="file" accept="application/pdf" required>
+    </section>
+
+    <section>
+      <label class="consent">
+        <input type="checkbox" id="consent" name="consent" value="true" required>
+        <span>I confirm the information is true, and I agree that it is processed, including by automated systems, to assess my claim.</span>
+      </label>
+    </section>
+
+    <button type="submit" class="primary" id="submit-btn">Submit claim</button>
+  </form>
+
+  <section id="done" hidden>
+    <h2>Claim received</h2>
+    <p>Your claim number is</p>
+    <p class="claim-id" id="done-id"></p>
+    <p id="done-msg"></p>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// Filled in by n8n ("Render form page") with absolute webhook URLs.
+const CONFIG = __CONFIG__;
+const $ = (id) => document.getElementById(id);
+
+// ---------- Map ----------
+let marker = null;
+const map = L.map('map').setView(CONFIG.mapCenter, CONFIG.mapZoom);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+}).addTo(map);
+
+let lookupTimer = null;
+function setPin(lat, lon, address) {
+  lat = Number(lat.toFixed(6));
+  lon = Number(lon.toFixed(6));
+  if (!marker) {
+    marker = L.marker([lat, lon], { draggable: true }).addTo(map);
+    marker.on('dragend', () => { const p = marker.getLatLng(); setPin(p.lat, p.lng); });
+  } else {
+    marker.setLatLng([lat, lon]);
+  }
+  $('incident_lat').value = lat;
+  $('incident_lon').value = lon;
+  clearFieldError('map');
+  if (address) return showAddress(address);
+  showAddress(null, 'Looking up the address…');
+  // Debounced: the address service allows about one request per second.
+  clearTimeout(lookupTimer);
+  lookupTimer = setTimeout(() => reverseLookup(lat, lon), 600);
+}
+
+function showAddress(address, pending) {
+  const el = $('address');
+  const lat = $('incident_lat').value;
+  const lon = $('incident_lon').value;
+  $('incident_location').value = address || '';
+  el.classList.toggle('empty', !address);
+  el.textContent = address
+    ? `${address} (${lat}, ${lon})`
+    : pending || `Pin at ${lat}, ${lon}. No address found, but the pin is enough.`;
+}
+
+async function reverseLookup(lat, lon) {
+  try {
+    const r = await fetch(`${CONFIG.geocodeUrl}?lat=${lat}&lon=${lon}`);
+    const j = await r.json();
+    // Ignore the answer if the pin moved in the meantime.
+    if (String(lat) !== $('incident_lat').value || String(lon) !== $('incident_lon').value) return;
+    showAddress(j.result ? j.result.display_name : null);
+  } catch (e) {
+    showAddress(null);
+  }
+}
+
+map.on('click', (e) => setPin(e.latlng.lat, e.latlng.lng));
+
+async function search() {
+  const q = $('search').value.trim();
+  const list = $('results');
+  list.innerHTML = '';
+  if (q.length < 3) return;
+  $('search-btn').disabled = true;
+  try {
+    const r = await fetch(`${CONFIG.geocodeUrl}?q=${encodeURIComponent(q)}`);
+    const j = await r.json();
+    const results = j.results || [];
+    if (!results.length) {
+      list.innerHTML = '<li class="hint">No place found. Try another spelling, or tap the map.</li>';
+    }
+    for (const res of results) {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = res.display_name;
+      b.dir = 'auto';
+      b.onclick = () => {
+        map.setView([res.lat, res.lon], 17);
+        setPin(res.lat, res.lon, res.display_name);
+        list.innerHTML = '';
+      };
+      li.appendChild(b);
+      list.appendChild(li);
+    }
+  } catch (e) {
+    list.innerHTML = '<li class="hint">Search is unavailable right now. Tap the map instead.</li>';
+  } finally {
+    $('search-btn').disabled = false;
+  }
+}
+$('search-btn').onclick = search;
+$('search').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+
+$('gps-btn').onclick = () => {
+  const fail = () => {
+    $('gps-btn').disabled = false;
+    showAddress(null, 'Your location is not available here (it needs HTTPS and your permission). Tap the map instead.');
+  };
+  if (!navigator.geolocation || !window.isSecureContext) return fail();
+  $('gps-btn').disabled = true;
+  navigator.geolocation.getCurrentPosition((pos) => {
+    $('gps-btn').disabled = false;
+    map.setView([pos.coords.latitude, pos.coords.longitude], 17);
+    setPin(pos.coords.latitude, pos.coords.longitude);
+  }, fail, { enableHighAccuracy: true, timeout: 10000 });
+};
+
+// ---------- Form helpers ----------
+const now = new Date();
+now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+$('incident_datetime').max = now.toISOString().slice(0, 16);
+
+$('description').addEventListener('input', () => { $('desc-count').textContent = $('description').value.length; });
+
+$('photos').addEventListener('change', () => {
+  const box = $('previews');
+  box.innerHTML = '';
+  for (const f of [...$('photos').files].slice(0, CONFIG.maxPhotos)) {
+    const img = document.createElement('img');
+    img.alt = f.name;
+    img.src = URL.createObjectURL(f);
+    box.appendChild(img);
+  }
+});
+
+function fieldError(id, text) {
+  const anchor = $(id);
+  let el = anchor.parentElement.querySelector(`.field-error[data-for="${id}"]`);
+  if (!el) {
+    el = document.createElement('p');
+    el.className = 'field-error';
+    el.dataset.for = id;
+    anchor.insertAdjacentElement('afterend', el);
+  }
+  el.textContent = text;
+}
+function clearFieldError(id) {
+  const el = document.querySelector(`.field-error[data-for="${id}"]`);
+  if (el) el.remove();
+}
+function banner(kind, html) {
+  const b = $('banner');
+  b.className = `msg ${kind}`;
+  b.innerHTML = html;
+  b.hidden = false;
+  b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Same rules as the server ("Validate submission"); the server checks again.
+function validate() {
+  document.querySelectorAll('.field-error').forEach((e) => e.remove());
+  const errors = [];
+  const add = (id, text) => { errors.push(text); fieldError(id, text); };
+  if (!/^[A-Za-z0-9-]{4,30}$/.test($('policy_id').value.trim())) add('policy_id', 'Enter your policy number (4 to 30 letters, digits or dashes).');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('contact_email').value.trim())) add('contact_email', 'Enter a valid email address.');
+  if (!$('claim_type').value) add('claim_type', 'Choose the type of damage.');
+  const dt = $('incident_datetime').value;
+  if (!dt) add('incident_datetime', 'Enter the date and time of the incident.');
+  else if (dt > $('incident_datetime').max) add('incident_datetime', 'The date cannot be in the future.');
+  if ($('description').value.trim().length < 20) add('description', 'Describe the incident in at least 20 characters.');
+  const amount = Number($('claimed_amount').value);
+  if (!(amount > 0 && amount <= 1000000)) add('claimed_amount', 'Enter the claimed amount in TND.');
+  if (!$('incident_lat').value) add('map', 'Place a pin on the map where the incident happened.');
+  const photos = [...$('photos').files];
+  if (photos.length < 1 || photos.length > CONFIG.maxPhotos) add('photos', `Add between 1 and ${CONFIG.maxPhotos} photos.`);
+  else if (photos.some((f) => !['image/jpeg', 'image/png'].includes(f.type))) add('photos', 'Photos must be JPG or PNG.');
+  const inv = $('invoice').files[0];
+  if (!inv) add('invoice', 'Add the repair invoice or quote as a PDF.');
+  else if (inv.type !== 'application/pdf') add('invoice', 'The invoice must be a PDF.');
+  else if (inv.size > CONFIG.maxInvoiceBytes) add('invoice', 'The invoice PDF must be smaller than 8 MB.');
+  if (!$('consent').checked) add('consent', 'Please confirm the statement above.');
+  return errors;
+}
+
+// Photos are resized in the browser (longest side 1600 px). This keeps the upload under
+// n8n's request size limit and cuts the vision model's cost, as the design asks.
+function resizeImage(file, maxSide = 1600, quality = 0.85) {
+  return createImageBitmap(file).then((bmp) => {
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    return new Promise((resolve, reject) => canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('resize failed'))), 'image/jpeg', quality));
+  });
+}
+
+$('claim').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('banner').hidden = true;
+  const errors = validate();
+  if (errors.length) {
+    banner('error', `Please fix ${errors.length === 1 ? 'this' : 'these'} first:<ul>${errors.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`);
+    return;
+  }
+  const btn = $('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Preparing photos…';
+  try {
+    const fd = new FormData();
+    for (const id of ['policy_id', 'contact_email', 'claim_type', 'incident_datetime', 'description',
+      'claimed_amount', 'incident_lat', 'incident_lon', 'incident_location']) {
+      fd.append(id, $(id).value.trim());
+    }
+    fd.append('consent', 'true');
+    const photos = [...$('photos').files];
+    for (let i = 0; i < photos.length; i += 1) {
+      const blob = await resizeImage(photos[i]);
+      fd.append('photos', blob, `photo_${i + 1}.jpg`);
+    }
+    fd.append('invoice', $('invoice').files[0], $('invoice').files[0].name);
+    btn.textContent = 'Sending…';
+    const r = await fetch(CONFIG.submitUrl, { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 202 && j.claim_id) {
+      $('claim').hidden = true;
+      $('done-id').textContent = j.claim_id;
+      $('done-msg').textContent = j.message || '';
+      $('done').hidden = false;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const list = (j.errors || ['Something went wrong. Please try again in a few minutes.'])
+      .map((x) => `<li>${escapeHtml(x)}</li>`).join('');
+    banner('error', `The claim was not accepted:<ul>${list}</ul>`);
+  } catch (err) {
+    banner('error', 'The claim could not be sent. Check your connection and try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit claim';
+  }
+});
+</script>
+</body>
+</html>

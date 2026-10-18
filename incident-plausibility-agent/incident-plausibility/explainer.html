@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incident Plausibility Agent</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87,600;87,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a case file. One reading column; the worked claim, the pipeline and the tables
+     widen beyond it. Evidence is set in mono, like entries in an adjuster's file. */
+  :root {
+    --bg: #f4f6f8;
+    --paper: #ffffff;
+    --ink: #17212b;
+    --muted: #586674;
+    --line: #d8dee5;
+    --accent: #0b6b6f;          /* teal: the agent, verified facts */
+    --accent-soft: #e2f0f0;
+    --flag: #b4451f;            /* semantic: a warning sign */
+    --flag-soft: #fbe9e2;
+    --ok: #2f7a3e;
+    --ok-soft: #e5f2e7;
+    --ai: #5a4fb0;              /* semantic: steps done by an LLM */
+    --ai-soft: #ecebf8;
+    --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151b; --paper: #161e26; --ink: #e4e9ee; --muted: #9aa8b5; --line: #2a3541;
+      --accent: #4cc2c4; --accent-soft: #16302f; --flag: #f08a63; --flag-soft: #3a2018;
+      --ok: #7fcf8c; --ok-soft: #17301c; --ai: #a79cf3; --ai-soft: #24213d;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151b; --paper: #161e26; --ink: #e4e9ee; --muted: #9aa8b5; --line: #2a3541;
+    --accent: #4cc2c4; --accent-soft: #16302f; --flag: #f08a63; --flag-soft: #3a2018;
+    --ok: #7fcf8c; --ok-soft: #17301c; --ai: #a79cf3; --ai-soft: #24213d;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 16px/1.6 var(--body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 40px 72px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 56px; }
+  .col { max-width: 720px; }
+  h1, h2, h3 { font-family: var(--display); font-stretch: 87%; text-wrap: balance; margin: 0; line-height: 1.15; }
+  h1 { font-size: clamp(2.1rem, 5vw, 3.1rem); font-weight: 800; letter-spacing: -0.01em; }
+  h2 { font-size: 1.65rem; font-weight: 800; }
+  h3 { font-size: 1.1rem; font-weight: 600; }
+  p { margin: 0; }
+  .stack { display: grid; gap: 14px; }
+  .eyebrow { font: 500 .75rem/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; }
+  .muted { color: var(--muted); }
+  code, .mono { font-family: var(--mono); font-size: .88em; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- Header ---- */
+  header { display: grid; gap: 16px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .chip { font: 500 .78rem/1 var(--mono); padding: 6px 9px; border-radius: 4px; border: 1px solid var(--line); background: var(--paper); color: var(--muted); }
+
+  /* ---- Worked claim (case file) ---- */
+  .case { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overflow: hidden; }
+  .case > div { padding: 22px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+  .case .in { border-right: 1px solid var(--line); }
+  .label { font: 500 .72rem/1.2 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  blockquote { margin: 0; padding: 12px 14px; border-left: 3px solid var(--line); background: var(--bg); font-size: .97rem; }
+  .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; font-size: .92rem; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .signs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .sign { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 12px; padding: 10px 12px; border-radius: 6px; background: var(--flag-soft); align-items: start; }
+  .sign.ok { background: var(--ok-soft); }
+  .pts { font: 600 1.05rem/1.3 var(--mono); color: var(--flag); font-variant-numeric: tabular-nums; }
+  .sign.ok .pts { color: var(--ok); font-size: .85rem; }
+  .sign b { font-family: var(--mono); font-size: .8rem; font-weight: 500; display: block; letter-spacing: .02em; }
+  .sign span { font-size: .9rem; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line); padding-top: 12px; }
+  .total strong { font: 800 1.8rem/1 var(--display); font-variant-numeric: tabular-nums; }
+
+  /* ---- System map ---- */
+  .sysmap { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+  .node { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 12px; font-size: .9rem; display: grid; gap: 4px; align-content: start; }
+  .node small { color: var(--muted); font-size: .8rem; }
+  .node.me { border: 2px solid var(--accent); background: var(--accent-soft); }
+  .agents { display: grid; gap: 8px; }
+  .arrow { color: var(--muted); font-family: var(--mono); text-align: center; align-self: center; }
+  .sysrow { display: grid; grid-template-columns: minmax(0, 1fr) 1.2rem minmax(0, 1fr) 1.2rem minmax(0, 1.4fr) 1.2rem minmax(0, 1fr); gap: 8px; align-items: center; }
+
+  /* ---- Pipeline ---- */
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .85rem; color: var(--muted); }
+  .dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: step; }
+  .step { display: grid; grid-template-columns: 2.2rem minmax(0, 13rem) minmax(0, 1fr); gap: 16px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; align-items: start; }
+  .step::before { counter-increment: step; content: counter(step); font: 800 1.4rem/1 var(--display); color: var(--muted); }
+  .step h3 { display: grid; gap: 6px; }
+  .tag { justify-self: start; font: 500 .7rem/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border-radius: 3px; }
+  .tag.api { background: var(--accent-soft); color: var(--accent); }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.code { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .step p { font-size: .95rem; }
+  .step .src { font-size: .82rem; color: var(--muted); margin-top: 6px; }
+
+  /* ---- Tables ---- */
+  .tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font: 500 .72rem/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td code { white-space: nowrap; }
+  .conf { font: 500 .75rem/1 var(--mono); padding: 3px 6px; border-radius: 3px; white-space: nowrap; }
+  .conf.h { background: var(--ok-soft); color: var(--ok); }
+  .conf.m { background: var(--accent-soft); color: var(--accent); }
+  .conf.l { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+
+  /* ---- Guardrail examples ---- */
+  .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  pre { margin: 0; padding: 12px; background: var(--bg); border-radius: 4px; overflow-x: auto; font: .8rem/1.5 var(--mono); }
+  .verdict { font-size: .9rem; padding: 8px 10px; border-radius: 4px; background: var(--ok-soft); color: var(--ok); }
+  .techniques { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 28px; margin: 0; padding: 0; list-style: none; }
+  .techniques li { display: grid; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .techniques b { font-weight: 600; }
+  .techniques span { font-size: .92rem; color: var(--muted); }
+
+  .note { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; color: var(--muted); font-size: .95rem; }
+  footer { color: var(--muted); font-size: .88rem; border-top: 1px solid var(--line); padding-top: 18px; }
+
+  @media (max-width: 820px) {
+    .case { grid-template-columns: minmax(0, 1fr); }
+    .case .in { border-right: 0; border-bottom: 1px solid var(--line); }
+    .sysrow { grid-template-columns: minmax(0, 1fr); }
+    .sysrow .arrow { transform: rotate(90deg); }
+    .step { grid-template-columns: 2rem minmax(0, 1fr); }
+    .step > p, .step > div { grid-column: 2; }
+    .pair, .techniques { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sign { transition: transform .15s ease; }
+    .sign:hover { transform: translateX(2px); }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="col">
+    <p class="eyebrow">ClaimShield AI · sub-workflow in n8n</p>
+    <h1>Incident Plausibility Agent</h1>
+    <p class="lede">It checks whether a motor claim's story could really have happened where and when the claimant says, and whether the repair invoice fits that story. Every warning comes with evidence a human adjuster can verify.</p>
+    <div class="facts">
+      <span class="chip">22 n8n nodes</span>
+      <span class="chip">free LLM (Groq by default)</span>
+      <span class="chip">free map and weather data</span>
+      <span class="chip">6 warning signs</span>
+      <span class="chip">never sees the photos</span>
+    </div>
+  </header>
+
+  <!-- Worked claim -->
+  <section class="stack" aria-labelledby="ex-h">
+    <p class="eyebrow">A claim, start to finish</p>
+    <h2 id="ex-h">What it does with one claim</h2>
+    <div class="case">
+      <div class="in">
+        <p class="label">Claim received</p>
+        <blockquote>“I was stopped at the traffic light on Avenue Habib Bourguiba when the car behind me hit the back of my car. It was raining heavily and already dark.”</blockquote>
+        <dl class="kv">
+          <dt>When</dt><dd class="mono">14 Mar 2026, 18:40</dd>
+          <dt>Where</dt><dd class="mono">map pin 36.8004, 10.1866 (Tunis)</dd>
+          <dt>Invoice</dt><dd class="mono">rear_bumper, taillight_left, radiator</dd>
+        </dl>
+      </div>
+      <div>
+        <p class="label">What the agent found</p>
+        <ul class="signs">
+          <li class="sign ok"><span class="pts">pass</span><span><b>PLACE</b>A traffic light exists within 150 m of the pin (OpenStreetMap).</span></li>
+          <li class="sign ok"><span class="pts">pass</span><span><b>LIGHT</b>Sunset was 18:25, so “already dark” at 18:40 fits.</span></li>
+          <li class="sign"><span class="pts">+15</span><span><b>WEATHER_OR_LIGHT_CONTRADICTION</b>Claims heavy rain, but 0 mm was recorded around 18:40 and the sky was “cloudy”.</span></li>
+          <li class="sign"><span class="pts">+5</span><span><b>INVOICE_PART_IMPLAUSIBLE</b>A radiator sits at the front. A rear-end impact would not damage it.</span></li>
+        </ul>
+        <div class="total"><span class="muted">Sent to the Fraud Risk &amp; Decision agent</span><strong>20 pts</strong></div>
+      </div>
+    </div>
+    <p class="note col">This is a real test run against live map and weather data. The 20 points add to the claim's overall risk score; on its own, this claim would go to human review, not to a fraud investigation.</p>
+  </section>
+
+  <!-- Where it sits -->
+  <section class="stack" aria-labelledby="sys-h">
+    <p class="eyebrow">Place in the system</p>
+    <h2 id="sys-h">One of four specialist agents</h2>
+    <p class="col">The orchestrator sends each part of a claim to the agent that understands it. This agent runs after the Invoice Parser, because it needs the invoiced parts.</p>
+    <div class="sysrow">
+      <div class="node"><b>Claim form</b><small>n8n web page: map pin, photos, PDF</small></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node"><b>Orchestrator</b><small>validates policy, routes evidence</small></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="agents">
+        <div class="node"><b>Visual Inspection</b><small>photos · GPT-4o vision</small></div>
+        <div class="node"><b>Invoice Parser</b><small>PDF · OCR</small></div>
+        <div class="node me"><b>Incident Plausibility</b><small>story · maps · weather · invoice</small></div>
+        <div class="node"><b>Policy RAG</b><small>policy clauses · Qdrant</small></div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node"><b>Fraud Risk &amp; Decision</b><small>score 0–100 → approve, review or investigate</small></div>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Evidence</th><th>Visual Inspection</th><th>Incident Plausibility</th></tr></thead>
+        <tbody>
+          <tr><td>Damage photos</td><td>yes</td><td>no, on purpose</td></tr>
+          <tr><td>Maps: roads, speed limits, roundabouts, parking</td><td>no</td><td>yes</td></tr>
+          <tr><td>Recorded weather, sunrise and sunset</td><td>no</td><td>yes</td></tr>
+          <tr><td>Logic of the description, manipulation attempts</td><td>no</td><td>yes</td></tr>
+          <tr><td>Invoice parts against the reconstructed incident</td><td>no</td><td>yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note col">The two agents use different evidence, so their warning signs are independent and the decision agent never counts the same fact twice.</p>
+  </section>
+
+  <!-- Pipeline -->
+  <section class="stack" aria-labelledby="how-h">
+    <p class="eyebrow">How it works</p>
+    <h2 id="how-h">Six steps, in order</h2>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--accent)"></i>Free outside data (no API key)</span>
+      <span><i class="dot" style="background:var(--ai)"></i>LLM</span>
+      <span><i class="dot" style="background:var(--muted)"></i>Plain code</span>
+    </div>
+    <ol class="steps">
+      <li class="step">
+        <h3>Locate the incident<span class="tag api">API</span></h3>
+        <div><p>Uses the map pin from the claim form. Without one, it geocodes the typed address, which is less reliable because “Avenue Habib Bourguiba” exists in at least 5 places.</p><p class="src">Nominatim (OpenStreetMap)</p></div>
+      </li>
+      <li class="step">
+        <h3>Gather the context<span class="tag api">API</span></h3>
+        <div><p>Lists the roads, speed limits, traffic lights, roundabouts and car parks within 150 m, trying two mirror servers if the main one is busy. Gets the hourly weather plus sunrise and sunset for that date.</p><p class="src">Overpass (OpenStreetMap) · Open-Meteo</p></div>
+      </li>
+      <li class="step">
+        <h3>Read the story<span class="tag ai">LLM · small, fast</span></h3>
+        <div><p>Turns the free text, in English, French or Arabic, into structured facts: what the car was doing, which side was hit, stated speed, weather, light, places, and any attempt to manipulate the AI. <strong>Every fact must quote the exact words that prove it.</strong></p></div>
+      </li>
+      <li class="step">
+        <h3>Verify the facts<span class="tag code">code</span></h3>
+        <div><p>Checks that each quote really is in the description. A fact without a real quote is dropped, so the LLM cannot add something the claimant never wrote.</p></div>
+      </li>
+      <li class="step">
+        <h3>Reconstruct the incident<span class="tag ai">LLM · large × 3</span></h3>
+        <div><p>Works out the collision geometry, then predicts the impact zone, the parts that should be damaged, and any statements that contradict each other, quoted. It sees only the story. Three independent answers are compared, and the majority wins.</p></div>
+      </li>
+      <li class="step">
+        <h3>Judge and score<span class="tag code">code</span></h3>
+        <div><p>Compares the facts with the map and weather, and the invoice with the reconstruction. Each warning sign gets points, a confidence level and a sentence of evidence. The AI interprets; code decides.</p></div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Checks -->
+  <section class="stack" aria-labelledby="chk-h">
+    <p class="eyebrow">Output</p>
+    <h2 id="chk-h">The warning signs</h2>
+    <p class="col">Points add to the claim's risk score. Confidence tells the decision agent how much weight a sign deserves: a low-confidence sign alone should never start a fraud investigation.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Sign</th><th>Fires when</th><th>Points</th><th>Confidence</th></tr></thead>
+        <tbody>
+          <tr><td><code>PLACE_FEATURE_MISSING</code></td><td>A roundabout, traffic light or car park the claimant mentions doesn't exist within 150 m</td><td class="num">+10</td><td><span class="conf h">high</span> with pin · <span class="conf m">medium</span> typed address</td></tr>
+          <tr><td><code>SPEED_IMPLAUSIBLE</code></td><td>Stated speed is more than 40 km/h above the road's limit</td><td class="num">+10</td><td><span class="conf h">high</span> signed limit · <span class="conf m">medium</span> estimated</td></tr>
+          <tr><td><code>WEATHER_OR_LIGHT_CONTRADICTION</code></td><td>Claimed rain, snow, ice, fog or hail isn't in the record, or “dark”/“daylight” contradicts sunrise and sunset</td><td class="num">+15</td><td><span class="conf h">high</span> light · <span class="conf m">medium</span> weather</td></tr>
+          <tr><td><code>INTERNAL_CONTRADICTION</code></td><td>Two quoted statements can't both be true, in at least 2 of 3 answers</td><td class="num">+10</td><td><span class="conf h">high</span> 3/3 · <span class="conf m">medium</span> 2/3</td></tr>
+          <tr><td><code>MANIPULATION_ATTEMPT</code></td><td>The text tries to instruct the AI or the reviewer</td><td class="num">+15</td><td><span class="conf h">high</span> LLM + pattern · <span class="conf m">medium</span> one</td></tr>
+          <tr><td><code>INVOICE_PART_IMPLAUSIBLE</code></td><td>An invoiced part the reconstructed incident wouldn't damage</td><td class="num">+5 each, max 15</td><td>same as the reconstruction</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Prompt engineering -->
+  <section class="stack" aria-labelledby="pe-h">
+    <p class="eyebrow">Prompt engineering</p>
+    <h2 id="pe-h">Why the LLM can't invent evidence</h2>
+    <p class="col">A fact the claimant never wrote would become a false fraud signal, so both prompts must back every claim with a quote, and code checks the quotes. Two of the guardrail tests:</p>
+    <div class="pair">
+      <div class="card">
+        <p class="label">Invented fact</p>
+        <p>Description: “It was a cold January morning. I was stopped at the traffic light…”</p>
+        <pre>"stated_weather": "ice",
+"stated_weather_quote": "the road was icy"</pre>
+        <p class="verdict">Quote not in the description → fact dropped → no false weather flag (0 pts).</p>
+      </div>
+      <div class="card">
+        <p class="label">Invented contradiction</p>
+        <p>All three answers report a contradiction with a quote the claimant never wrote.</p>
+        <pre>"quote_a": "I was driving at 80 km/h",
+"quote_b": "I was stopped at the traffic light"</pre>
+        <p class="verdict">Quote_a not found → contradiction ignored, with a note (0 pts).</p>
+      </div>
+    </div>
+    <ul class="techniques">
+      <li><b>Prompt chaining</b><span>Reading (step 3) and reasoning (step 5) are separate calls, so a failure can be traced to one step.</span></li>
+      <li><b>Evidence quoting, checked in code</b><span>Every fact and contradiction carries the exact words that prove it.</span></li>
+      <li><b>Dynamic few-shot</b><span>From 6 worked examples, the 2 closest to this claim are chosen, most similar last.</span></li>
+      <li><b>Hard negatives</b><span>Examples teach that “cold morning” is not ice and “maybe around 8” is not a contradiction.</span></li>
+      <li><b>Reasoning first, strict JSON</b><span>The model explains the collision before answering; enums stop invented labels.</span></li>
+      <li><b>Self-consistency</b><span>Three answers, majority vote; their agreement becomes the confidence.</span></li>
+      <li><b>Abstention</b><span>A vague story gets “unknown”, and the invoice check is skipped instead of guessed.</span></li>
+      <li><b>Injection defence and detection</b><span>The claimant's text is data; instructions inside it are reported as a fraud sign.</span></li>
+      <li><b>Provider-independent prompts</b><span>Runs on free models (Groq, Gemini, Ollama). Every answer is checked against the schema in code, so formatting mistakes can't become fraud signals.</span></li>
+    </ul>
+    <p class="note col">Prompts are versioned files (extraction v2 → v3, reconstruction v1 → v2). An evaluation runner compares old and new versions on 15 labeled claims in English, French and Arabic; it needs a free Groq or Gemini key to produce the before/after numbers.</p>
+  </section>
+
+  <!-- Tests -->
+  <section class="stack" aria-labelledby="test-h">
+    <p class="eyebrow">Evidence it works</p>
+    <h2 id="test-h">Tested so far</h2>
+    <p class="col">Nine scenarios run through the real workflow code against live OpenStreetMap and Open-Meteo data, with fixed LLM answers.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Scenario</th><th>Points</th><th>What happened</th></tr></thead>
+        <tbody>
+          <tr><td>Sample claim, typed address</td><td class="num">30</td><td>Matched the wrong avenue, so “no traffic light” fired falsely</td></tr>
+          <tr><td>Same claim with a map pin</td><td class="num">20</td><td>Traffic light found; the false positive is gone</td></tr>
+          <tr><td>Made-up story: July noon, “dark and icy”, 150 km/h, “I was parked”</td><td class="num">50</td><td>Five signs fired</td></tr>
+          <tr><td>Vague claim, city-level location</td><td class="num">0</td><td>Correctly flags nothing</td></tr>
+          <tr><td>“Ignore previous instructions…” in the text</td><td class="num">15</td><td>Caught by the pattern list even though the LLM missed it</td></tr>
+          <tr><td>LLM invents “ice”</td><td class="num">0</td><td>Fact dropped by the quote check</td></tr>
+          <tr><td>Real contradiction quoted in 2 of 3 answers</td><td class="num">10</td><td>Flagged</td></tr>
+          <tr><td>LLM invents a contradiction</td><td class="num">0</td><td>Ignored</td></tr>
+          <tr><td>Untidy free-model answers (text around the JSON, invalid values, one unreadable)</td><td class="num">15</td><td>Answers repaired or skipped; the real contradiction is still found</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col stack">
+      <h3>Known limits</h3>
+      <ul class="stack" style="margin:0;padding-left:20px">
+        <li>The weather history uses a 10–25 km grid and can miss a local shower, so weather signs are medium confidence only.</li>
+        <li>OpenStreetMap often lacks speed limits; a typical limit for the road type is used instead.</li>
+        <li>The public Overpass map servers are often overloaded; the agent tries three, then continues with fewer checks (status “partial”).</li>
+        <li>The reconstruction is a plausibility estimate, not a physics simulation.</li>
+        <li>Not yet tested: inside a running n8n instance, and with real LLM answers.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="col">
+    Files: <code>incident-plausibility/incident_plausibility_agent.json</code> (import into n8n) · <code>README.md</code> (setup) · <code>PROMPTS.md</code> (prompt library and evaluation).
+  </footer>
+</div>
+
+</html>

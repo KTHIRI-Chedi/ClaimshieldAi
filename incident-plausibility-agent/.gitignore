@@ -1,0 +1,8 @@
+# Fine-tuned model weights: too large for git (~2 GB). Keep them on Google Drive and put the
+# .gguf in model/ on the machine that runs Ollama.
+model/*.gguf
+*.zip
+# Training data: regenerated identically with `node incident-plausibility/dev/finetune/generate_dataset.js` (seed 42).
+incident-plausibility/dev/finetune/data/*.jsonl
+# Evaluation runs (keep the ones you want for the report by force-adding them).
+incident-plausibility/dev/eval/results/*_MOCK.md

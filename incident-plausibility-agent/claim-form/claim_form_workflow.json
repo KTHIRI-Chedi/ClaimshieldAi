@@ -1,0 +1,502 @@
+{
+  "name": "ClaimShield - Claim Intake Form",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "claim-form",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "945cdd14-7230-4ae4-bccb-012774779f10",
+      "name": "Claim page (GET /claim-form)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "ef806a73-38cd-45eb-9eef-e9eb06affa1d"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Serves the claim page. TEMPLATE is dev/form.html, inlined by dev/build.py.\nconst TEMPLATE = \"<!doctype html>\\n<html lang=\\\"en\\\">\\n<head>\\n<meta charset=\\\"utf-8\\\">\\n<meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\">\\n<title>ClaimShield AI · File a claim</title>\\n<link rel=\\\"stylesheet\\\" href=\\\"https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css\\\">\\n<style>\\n  :root {\\n    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #5d6677; --line: #d9dde5;\\n    --accent: #1f5fd1; --accent-text: #ffffff; --danger: #b42318; --danger-bg: #fdecea;\\n    --ok: #146c43; --ok-bg: #e7f5ee; --focus: #8fb2f0;\\n  }\\n  @media (prefers-color-scheme: dark) {\\n    :root {\\n      --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e3542;\\n      --accent: #5b8ff0; --accent-text: #0b0e13; --danger: #ff8a80; --danger-bg: #3a1d1b;\\n      --ok: #7fd1a6; --ok-bg: #16302a; --focus: #3c5f9e;\\n    }\\n  }\\n  * { box-sizing: border-box; }\\n  body { margin: 0; background: var(--bg); color: var(--text);\\n    font: 16px/1.5 system-ui, -apple-system, \\\"Segoe UI\\\", Roboto, sans-serif; }\\n  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }\\n  header h1 { margin: 0 0 4px; font-size: 1.6rem; }\\n  header p { margin: 0 0 20px; color: var(--muted); }\\n  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px;\\n    padding: 18px; margin-bottom: 16px; }\\n  section h2 { margin: 0 0 12px; font-size: 1.05rem; }\\n  label { display: block; font-weight: 600; margin: 12px 0 4px; }\\n  label:first-of-type { margin-top: 0; }\\n  .hint { color: var(--muted); font-size: .875rem; font-weight: 400; margin: 2px 0 0; }\\n  input[type=text], input[type=email], input[type=number], input[type=datetime-local],\\n  select, textarea {\\n    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;\\n    background: var(--card); color: var(--text); font: inherit; }\\n  textarea { min-height: 120px; resize: vertical; }\\n  input:focus, select:focus, textarea:focus, button:focus-visible {\\n    outline: 3px solid var(--focus); outline-offset: 1px; }\\n  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }\\n  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }\\n  button { font: inherit; border-radius: 8px; border: 1px solid var(--line); padding: 10px 14px;\\n    background: var(--card); color: var(--text); cursor: pointer; }\\n  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent);\\n    font-weight: 600; width: 100%; padding: 14px; }\\n  button:disabled { opacity: .6; cursor: progress; }\\n  .search { display: flex; gap: 8px; }\\n  .search input { flex: 1; }\\n  .tools { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }\\n  #map { height: 320px; border-radius: 8px; border: 1px solid var(--line); margin-top: 8px; }\\n  #results { list-style: none; margin: 6px 0 0; padding: 0; }\\n  #results li button { width: 100%; text-align: left; border-radius: 0; border-width: 0 0 1px; }\\n  .address { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg);\\n    font-size: .925rem; }\\n  .address.empty { color: var(--muted); }\\n  .previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-top: 8px; }\\n  .previews img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }\\n  .consent { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; margin: 0; }\\n  .consent input { margin-top: 4px; }\\n  .msg { padding: 12px 14px; border-radius: 8px; margin: 0 0 16px; }\\n  .msg.error { background: var(--danger-bg); color: var(--danger); }\\n  .msg.ok { background: var(--ok-bg); color: var(--ok); }\\n  .msg ul { margin: 6px 0 0; padding-left: 20px; }\\n  .field-error { color: var(--danger); font-size: .875rem; margin-top: 4px; }\\n  .claim-id { font-size: 1.4rem; font-weight: 700; letter-spacing: .02em; }\\n</style>\\n</head>\\n<body>\\n<main>\\n  <header>\\n    <h1>File a motor claim</h1>\\n    <p>Private vehicle damage: collision, vandalism or broken glass. It takes about 5 minutes.</p>\\n  </header>\\n\\n  <div id=\\\"banner\\\" role=\\\"alert\\\" hidden></div>\\n\\n  <form id=\\\"claim\\\" novalidate>\\n    <section>\\n      <h2>1. Your policy</h2>\\n      <div class=\\\"row\\\">\\n        <div>\\n          <label for=\\\"policy_id\\\">Policy number</label>\\n          <input id=\\\"policy_id\\\" name=\\\"policy_id\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" required placeholder=\\\"e.g. POL-104233\\\">\\n        </div>\\n        <div>\\n          <label for=\\\"contact_email\\\">Email</label>\\n          <input id=\\\"contact_email\\\" name=\\\"contact_email\\\" type=\\\"email\\\" autocomplete=\\\"email\\\" required>\\n          <p class=\\\"hint\\\">We send the decision here.</p>\\n        </div>\\n      </div>\\n    </section>\\n\\n    <section>\\n      <h2>2. What happened</h2>\\n      <div class=\\\"row\\\">\\n        <div>\\n          <label for=\\\"claim_type\\\">Type of damage</label>\\n          <select id=\\\"claim_type\\\" name=\\\"claim_type\\\" required>\\n            <option value=\\\"\\\">Choose…</option>\\n            <option value=\\\"collision\\\">Collision</option>\\n            <option value=\\\"vandalism\\\">Vandalism</option>\\n            <option value=\\\"glass\\\">Broken glass</option>\\n          </select>\\n        </div>\\n        <div>\\n          <label for=\\\"incident_datetime\\\">Date and time</label>\\n          <input id=\\\"incident_datetime\\\" name=\\\"incident_datetime\\\" type=\\\"datetime-local\\\" required>\\n        </div>\\n      </div>\\n      <label for=\\\"description\\\">Describe the incident</label>\\n      <p class=\\\"hint\\\">Say what your car was doing, what hit it and from which side, and the road and weather conditions.</p>\\n      <textarea id=\\\"description\\\" name=\\\"description\\\" maxlength=\\\"4000\\\" required></textarea>\\n      <p class=\\\"hint\\\"><span id=\\\"desc-count\\\">0</span> / 4000 characters, at least 20</p>\\n      <label for=\\\"claimed_amount\\\">Claimed amount (TND)</label>\\n      <input id=\\\"claimed_amount\\\" name=\\\"claimed_amount\\\" type=\\\"number\\\" min=\\\"1\\\" step=\\\"0.001\\\" inputmode=\\\"decimal\\\" required>\\n    </section>\\n\\n    <section>\\n      <h2>3. Where it happened</h2>\\n      <p class=\\\"hint\\\" style=\\\"margin-top:0\\\">Tap the map at the exact spot, or search for the street first. You can drag the pin.</p>\\n      <div class=\\\"search\\\">\\n        <input id=\\\"search\\\" type=\\\"text\\\" placeholder=\\\"Search a street or place\\\" aria-label=\\\"Search a street or place\\\">\\n        <button type=\\\"button\\\" id=\\\"search-btn\\\">Search</button>\\n      </div>\\n      <ul id=\\\"results\\\"></ul>\\n      <div class=\\\"tools\\\">\\n        <button type=\\\"button\\\" id=\\\"gps-btn\\\">📍 Use my current location</button>\\n      </div>\\n      <div id=\\\"map\\\" role=\\\"application\\\" aria-label=\\\"Map. Tap to place the incident pin.\\\"></div>\\n      <div id=\\\"address\\\" class=\\\"address empty\\\" dir=\\\"auto\\\">No location selected yet.</div>\\n      <input type=\\\"hidden\\\" id=\\\"incident_lat\\\" name=\\\"incident_lat\\\">\\n      <input type=\\\"hidden\\\" id=\\\"incident_lon\\\" name=\\\"incident_lon\\\">\\n      <input type=\\\"hidden\\\" id=\\\"incident_location\\\" name=\\\"incident_location\\\">\\n    </section>\\n\\n    <section>\\n      <h2>4. Photos and invoice</h2>\\n      <label for=\\\"photos\\\">Damage photos (1 to 8)</label>\\n      <p class=\\\"hint\\\">JPG or PNG. Include one photo that shows the whole car.</p>\\n      <input id=\\\"photos\\\" name=\\\"photos\\\" type=\\\"file\\\" accept=\\\"image/jpeg,image/png\\\" multiple required>\\n      <div id=\\\"previews\\\" class=\\\"previews\\\"></div>\\n      <label for=\\\"invoice\\\">Repair invoice or quote (PDF)</label>\\n      <input id=\\\"invoice\\\" name=\\\"invoice\\\" type=\\\"file\\\" accept=\\\"application/pdf\\\" required>\\n    </section>\\n\\n    <section>\\n      <label class=\\\"consent\\\">\\n        <input type=\\\"checkbox\\\" id=\\\"consent\\\" name=\\\"consent\\\" value=\\\"true\\\" required>\\n        <span>I confirm the information is true, and I agree that it is processed, including by automated systems, to assess my claim.</span>\\n      </label>\\n    </section>\\n\\n    <button type=\\\"submit\\\" class=\\\"primary\\\" id=\\\"submit-btn\\\">Submit claim</button>\\n  </form>\\n\\n  <section id=\\\"done\\\" hidden>\\n    <h2>Claim received</h2>\\n    <p>Your claim number is</p>\\n    <p class=\\\"claim-id\\\" id=\\\"done-id\\\"></p>\\n    <p id=\\\"done-msg\\\"></p>\\n  </section>\\n</main>\\n\\n<script src=\\\"https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js\\\"></script>\\n<script>\\n// Filled in by n8n (\\\"Render form page\\\") with absolute webhook URLs.\\nconst CONFIG = __CONFIG__;\\nconst $ = (id) => document.getElementById(id);\\n\\n// ---------- Map ----------\\nlet marker = null;\\nconst map = L.map('map').setView(CONFIG.mapCenter, CONFIG.mapZoom);\\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n  maxZoom: 19,\\n  attribution: '&copy; <a href=\\\"https://www.openstreetmap.org/copyright\\\" target=\\\"_blank\\\" rel=\\\"noopener\\\">OpenStreetMap</a>',\\n}).addTo(map);\\n\\nlet lookupTimer = null;\\nfunction setPin(lat, lon, address) {\\n  lat = Number(lat.toFixed(6));\\n  lon = Number(lon.toFixed(6));\\n  if (!marker) {\\n    marker = L.marker([lat, lon], { draggable: true }).addTo(map);\\n    marker.on('dragend', () => { const p = marker.getLatLng(); setPin(p.lat, p.lng); });\\n  } else {\\n    marker.setLatLng([lat, lon]);\\n  }\\n  $('incident_lat').value = lat;\\n  $('incident_lon').value = lon;\\n  clearFieldError('map');\\n  if (address) return showAddress(address);\\n  showAddress(null, 'Looking up the address…');\\n  // Debounced: the address service allows about one request per second.\\n  clearTimeout(lookupTimer);\\n  lookupTimer = setTimeout(() => reverseLookup(lat, lon), 600);\\n}\\n\\nfunction showAddress(address, pending) {\\n  const el = $('address');\\n  const lat = $('incident_lat').value;\\n  const lon = $('incident_lon').value;\\n  $('incident_location').value = address || '';\\n  el.classList.toggle('empty', !address);\\n  el.textContent = address\\n    ? `${address} (${lat}, ${lon})`\\n    : pending || `Pin at ${lat}, ${lon}. No address found, but the pin is enough.`;\\n}\\n\\nasync function reverseLookup(lat, lon) {\\n  try {\\n    const r = await fetch(`${CONFIG.geocodeUrl}?lat=${lat}&lon=${lon}`);\\n    const j = await r.json();\\n    // Ignore the answer if the pin moved in the meantime.\\n    if (String(lat) !== $('incident_lat').value || String(lon) !== $('incident_lon').value) return;\\n    showAddress(j.result ? j.result.display_name : null);\\n  } catch (e) {\\n    showAddress(null);\\n  }\\n}\\n\\nmap.on('click', (e) => setPin(e.latlng.lat, e.latlng.lng));\\n\\nasync function search() {\\n  const q = $('search').value.trim();\\n  const list = $('results');\\n  list.innerHTML = '';\\n  if (q.length < 3) return;\\n  $('search-btn').disabled = true;\\n  try {\\n    const r = await fetch(`${CONFIG.geocodeUrl}?q=${encodeURIComponent(q)}`);\\n    const j = await r.json();\\n    const results = j.results || [];\\n    if (!results.length) {\\n      list.innerHTML = '<li class=\\\"hint\\\">No place found. Try another spelling, or tap the map.</li>';\\n    }\\n    for (const res of results) {\\n      const li = document.createElement('li');\\n      const b = document.createElement('button');\\n      b.type = 'button';\\n      b.textContent = res.display_name;\\n      b.dir = 'auto';\\n      b.onclick = () => {\\n        map.setView([res.lat, res.lon], 17);\\n        setPin(res.lat, res.lon, res.display_name);\\n        list.innerHTML = '';\\n      };\\n      li.appendChild(b);\\n      list.appendChild(li);\\n    }\\n  } catch (e) {\\n    list.innerHTML = '<li class=\\\"hint\\\">Search is unavailable right now. Tap the map instead.</li>';\\n  } finally {\\n    $('search-btn').disabled = false;\\n  }\\n}\\n$('search-btn').onclick = search;\\n$('search').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });\\n\\n$('gps-btn').onclick = () => {\\n  const fail = () => {\\n    $('gps-btn').disabled = false;\\n    showAddress(null, 'Your location is not available here (it needs HTTPS and your permission). Tap the map instead.');\\n  };\\n  if (!navigator.geolocation || !window.isSecureContext) return fail();\\n  $('gps-btn').disabled = true;\\n  navigator.geolocation.getCurrentPosition((pos) => {\\n    $('gps-btn').disabled = false;\\n    map.setView([pos.coords.latitude, pos.coords.longitude], 17);\\n    setPin(pos.coords.latitude, pos.coords.longitude);\\n  }, fail, { enableHighAccuracy: true, timeout: 10000 });\\n};\\n\\n// ---------- Form helpers ----------\\nconst now = new Date();\\nnow.setMinutes(now.getMinutes() - now.getTimezoneOffset());\\n$('incident_datetime').max = now.toISOString().slice(0, 16);\\n\\n$('description').addEventListener('input', () => { $('desc-count').textContent = $('description').value.length; });\\n\\n$('photos').addEventListener('change', () => {\\n  const box = $('previews');\\n  box.innerHTML = '';\\n  for (const f of [...$('photos').files].slice(0, CONFIG.maxPhotos)) {\\n    const img = document.createElement('img');\\n    img.alt = f.name;\\n    img.src = URL.createObjectURL(f);\\n    box.appendChild(img);\\n  }\\n});\\n\\nfunction fieldError(id, text) {\\n  const anchor = $(id);\\n  let el = anchor.parentElement.querySelector(`.field-error[data-for=\\\"${id}\\\"]`);\\n  if (!el) {\\n    el = document.createElement('p');\\n    el.className = 'field-error';\\n    el.dataset.for = id;\\n    anchor.insertAdjacentElement('afterend', el);\\n  }\\n  el.textContent = text;\\n}\\nfunction clearFieldError(id) {\\n  const el = document.querySelector(`.field-error[data-for=\\\"${id}\\\"]`);\\n  if (el) el.remove();\\n}\\nfunction banner(kind, html) {\\n  const b = $('banner');\\n  b.className = `msg ${kind}`;\\n  b.innerHTML = html;\\n  b.hidden = false;\\n  b.scrollIntoView({ behavior: 'smooth', block: 'start' });\\n}\\nconst escapeHtml = (s) => String(s).replace(/[&<>\\\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\\\"': '&quot;', \\\"'\\\": '&#39;' }[c]));\\n\\n// Same rules as the server (\\\"Validate submission\\\"); the server checks again.\\nfunction validate() {\\n  document.querySelectorAll('.field-error').forEach((e) => e.remove());\\n  const errors = [];\\n  const add = (id, text) => { errors.push(text); fieldError(id, text); };\\n  if (!/^[A-Za-z0-9-]{4,30}$/.test($('policy_id').value.trim())) add('policy_id', 'Enter your policy number (4 to 30 letters, digits or dashes).');\\n  if (!/^[^\\\\s@]+@[^\\\\s@]+\\\\.[^\\\\s@]+$/.test($('contact_email').value.trim())) add('contact_email', 'Enter a valid email address.');\\n  if (!$('claim_type').value) add('claim_type', 'Choose the type of damage.');\\n  const dt = $('incident_datetime').value;\\n  if (!dt) add('incident_datetime', 'Enter the date and time of the incident.');\\n  else if (dt > $('incident_datetime').max) add('incident_datetime', 'The date cannot be in the future.');\\n  if ($('description').value.trim().length < 20) add('description', 'Describe the incident in at least 20 characters.');\\n  const amount = Number($('claimed_amount').value);\\n  if (!(amount > 0 && amount <= 1000000)) add('claimed_amount', 'Enter the claimed amount in TND.');\\n  if (!$('incident_lat').value) add('map', 'Place a pin on the map where the incident happened.');\\n  const photos = [...$('photos').files];\\n  if (photos.length < 1 || photos.length > CONFIG.maxPhotos) add('photos', `Add between 1 and ${CONFIG.maxPhotos} photos.`);\\n  else if (photos.some((f) => !['image/jpeg', 'image/png'].includes(f.type))) add('photos', 'Photos must be JPG or PNG.');\\n  const inv = $('invoice').files[0];\\n  if (!inv) add('invoice', 'Add the repair invoice or quote as a PDF.');\\n  else if (inv.type !== 'application/pdf') add('invoice', 'The invoice must be a PDF.');\\n  else if (inv.size > CONFIG.maxInvoiceBytes) add('invoice', 'The invoice PDF must be smaller than 8 MB.');\\n  if (!$('consent').checked) add('consent', 'Please confirm the statement above.');\\n  return errors;\\n}\\n\\n// Photos are resized in the browser (longest side 1600 px). This keeps the upload under\\n// n8n's request size limit and cuts the vision model's cost, as the design asks.\\nfunction resizeImage(file, maxSide = 1600, quality = 0.85) {\\n  return createImageBitmap(file).then((bmp) => {\\n    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));\\n    const canvas = document.createElement('canvas');\\n    canvas.width = Math.round(bmp.width * scale);\\n    canvas.height = Math.round(bmp.height * scale);\\n    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);\\n    return new Promise((resolve, reject) => canvas.toBlob(\\n      (b) => (b ? resolve(b) : reject(new Error('resize failed'))), 'image/jpeg', quality));\\n  });\\n}\\n\\n$('claim').addEventListener('submit', async (e) => {\\n  e.preventDefault();\\n  $('banner').hidden = true;\\n  const errors = validate();\\n  if (errors.length) {\\n    banner('error', `Please fix ${errors.length === 1 ? 'this' : 'these'} first:<ul>${errors.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`);\\n    return;\\n  }\\n  const btn = $('submit-btn');\\n  btn.disabled = true;\\n  btn.textContent = 'Preparing photos…';\\n  try {\\n    const fd = new FormData();\\n    for (const id of ['policy_id', 'contact_email', 'claim_type', 'incident_datetime', 'description',\\n      'claimed_amount', 'incident_lat', 'incident_lon', 'incident_location']) {\\n      fd.append(id, $(id).value.trim());\\n    }\\n    fd.append('consent', 'true');\\n    const photos = [...$('photos').files];\\n    for (let i = 0; i < photos.length; i += 1) {\\n      const blob = await resizeImage(photos[i]);\\n      fd.append('photos', blob, `photo_${i + 1}.jpg`);\\n    }\\n    fd.append('invoice', $('invoice').files[0], $('invoice').files[0].name);\\n    btn.textContent = 'Sending…';\\n    const r = await fetch(CONFIG.submitUrl, { method: 'POST', body: fd });\\n    const j = await r.json().catch(() => ({}));\\n    if (r.status === 202 && j.claim_id) {\\n      $('claim').hidden = true;\\n      $('done-id').textContent = j.claim_id;\\n      $('done-msg').textContent = j.message || '';\\n      $('done').hidden = false;\\n      window.scrollTo({ top: 0, behavior: 'smooth' });\\n      return;\\n    }\\n    const list = (j.errors || ['Something went wrong. Please try again in a few minutes.'])\\n      .map((x) => `<li>${escapeHtml(x)}</li>`).join('');\\n    banner('error', `The claim was not accepted:<ul>${list}</ul>`);\\n  } catch (err) {\\n    banner('error', 'The claim could not be sent. Check your connection and try again.');\\n  } finally {\\n    btn.disabled = false;\\n    btn.textContent = 'Submit claim';\\n  }\\n});\\n</script>\\n</body>\\n</html>\\n\";\nconst req = $input.first().json;\n\n// The page needs absolute URLs: recent n8n versions show webhook HTML inside a sandboxed\n// iframe, where relative URLs do not resolve against the n8n server.\nlet base = req.webhookUrl ? String(req.webhookUrl).replace(/\\/claim-form\\/?$/, '') : '';\nif (!base) {\n  const h = req.headers || {};\n  base = `${h['x-forwarded-proto'] || 'http'}://${h['x-forwarded-host'] || h.host}/webhook`;\n}\n\nconst config = {\n  submitUrl: `${base}/claim-submit`,\n  geocodeUrl: `${base}/claim-geocode`,\n  mapCenter: [36.8065, 10.1815], // Tunis\n  mapZoom: 12,\n  maxPhotos: 8,\n  maxInvoiceBytes: 8 * 1024 * 1024,\n};\n\nreturn [{ json: { html: TEMPLATE.replace('__CONFIG__', JSON.stringify(config)) } }];\n"
+      },
+      "id": "7d1f231d-01c1-45bf-9597-0dedc79db07e",
+      "name": "Render form page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "eaddaa64-966e-4f3b-91b9-dca6bd07164f",
+      "name": "Send page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "claim-geocode",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "06c6778f-0e85-48df-a71d-ede6fd3a4111",
+      "name": "Address lookup (GET /claim-geocode)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        260
+      ],
+      "webhookId": "6ea241c4-41bb-4278-a9e1-fc6a2783edb2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Address lookup for the claim page, so the browser never calls Nominatim directly.\n// ?lat=..&lon=..  -> reverse lookup (pin to address)\n// ?q=..           -> search (address to up to 5 places)\nconst qy = $input.first().json.query || {};\nconst NOMINATIM = 'https://nominatim.openstreetmap.org';\nconst lat = Number.parseFloat(qy.lat);\nconst lon = Number.parseFloat(qy.lon);\n\nlet mode = null;\nlet url = null;\nif (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {\n  mode = 'reverse';\n  url = `${NOMINATIM}/reverse?format=jsonv2&zoom=18&lat=${lat}&lon=${lon}`;\n} else if (typeof qy.q === 'string' && qy.q.trim().length >= 3) {\n  mode = 'search';\n  url = `${NOMINATIM}/search?format=jsonv2&limit=5&q=${encodeURIComponent(qy.q.trim().slice(0, 200))}`;\n}\n\nreturn [{ json: { mode, url } }];\n"
+      },
+      "id": "3c1703b2-9ba8-4f78-832a-82e7293d88c0",
+      "name": "Build geocode request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "00f21a51-8e74-4a98-a0fb-8b5f2e491359",
+              "leftValue": "={{ !!$json.url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "721d8dc3-ac58-4782-8c8d-8b5312aa53b8",
+      "name": "Lookup valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "ClaimShieldAI-student-project/0.1 (replace with your team contact)"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "563aff0b-ee28-44cc-a8c3-8ee5b1f3de53",
+      "name": "Nominatim",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        180
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keeps only what the page needs. Nominatim search returns a list (one n8n item per place);\n// reverse returns one object, or {error} when there is no address at that point.\nconst { mode } = $('Build geocode request').first().json;\nconst places = $input.all()\n  .map((i) => i.json)\n  .filter((j) => j && j.lat && j.lon && !j.error);\nconst pick = (j) => ({ lat: Number(j.lat), lon: Number(j.lon), display_name: j.display_name });\n\nreturn [{\n  json: mode === 'reverse'\n    ? { result: places[0] ? pick(places[0]) : null }\n    : { results: places.map(pick) },\n}];\n"
+      },
+      "id": "400e1a0f-ceda-4be8-b7da-0a03f1f52178",
+      "name": "Shape geocode response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "1993ddb6-4b39-4bba-a1a8-9e277b639956",
+      "name": "Send address",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: \"Send lat and lon, or q with at least 3 characters.\" }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "8544e859-21b4-4846-b3da-c5c2bfe17dca",
+      "name": "Send lookup error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "claim-submit",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "c8f43562-4ac2-4cca-b481-282b512ff538",
+      "name": "Claim submission (POST /claim-submit)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        560
+      ],
+      "webhookId": "5d028645-13af-4295-a330-f5b555eb33aa"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Server-side check of the submitted claim. Never trust the page's own checks: anyone can\n// post to the webhook directly.\nconst item = $input.first();\nconst b = (item.json && item.json.body) || {};\nconst bin = item.binary || {};\nconst errors = [];\n\nconst text = (k, max = 500) => String(b[k] ?? '').trim().slice(0, max);\nconst MAX_PHOTOS = 8;\nconst MAX_PHOTO_BYTES = 5 * 1024 * 1024;   // the page sends resized photos of ~0.3-1 MB\nconst MAX_INVOICE_BYTES = 8 * 1024 * 1024;\nconst CLAIM_TYPES = ['collision', 'vandalism', 'glass'];\n\nconst policyId = text('policy_id', 30).toUpperCase();\nif (!/^[A-Z0-9-]{4,30}$/.test(policyId)) errors.push('Policy number is missing or invalid.');\n\nconst email = text('contact_email', 200);\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push('Email address is missing or invalid.');\n\nconst claimType = text('claim_type', 20);\nif (!CLAIM_TYPES.includes(claimType)) errors.push('Type of damage is missing or invalid.');\n\n// datetime-local sends \"YYYY-MM-DDTHH:MM\" in the claimant's local time.\nconst dt = text('incident_datetime', 25);\nif (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?$/.test(dt)) {\n  errors.push('Date and time of the incident are missing or invalid.');\n} else {\n  const asUtc = Date.parse(`${dt.slice(0, 16)}:00Z`);\n  // Allow 14 h ahead of UTC (the largest timezone offset), and at most one year back.\n  if (asUtc > Date.now() + 14 * 3600 * 1000) errors.push('The incident date cannot be in the future.');\n  if (asUtc < Date.now() - 365 * 86400 * 1000) errors.push('The incident is more than a year old. Please contact us.');\n}\n\nconst description = text('description', 4000);\nif (description.length < 20) errors.push('Please describe the incident in at least 20 characters.');\n\nconst amount = Number(text('claimed_amount', 20));\nif (!(amount > 0 && amount <= 1000000)) errors.push('Claimed amount is missing or invalid.');\n\nconst lat = Number.parseFloat(b.incident_lat);\nconst lon = Number.parseFloat(b.incident_lon);\nif (!(Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) {\n  errors.push('Incident location is missing. Place a pin on the map.');\n}\n\nif (!['true', 'on', '1'].includes(text('consent', 5).toLowerCase())) {\n  errors.push('You must confirm the declaration.');\n}\n\n// ---- Files ----\n// n8n names uploaded files after the form field: \"photos\" for one file, \"photos0\",\n// \"photos1\"... for several.\nconst sizeOf = (f) => {\n  const m = String(f.fileSize || '').match(/([\\d.]+)\\s*(B|kB|KB|MB|GB)/);\n  if (!m) return 0;\n  const unit = { B: 1, kB: 1e3, KB: 1024, MB: 1e6, GB: 1e9 }[m[2]];\n  return Number(m[1]) * unit;\n};\nconst keys = Object.keys(bin);\nconst photoKeys = keys.filter((k) => /^photos\\d*$/.test(k))\n  .sort((x, y) => Number(x.slice(6) || 0) - Number(y.slice(6) || 0));\nconst invoiceKeys = keys.filter((k) => /^invoice\\d*$/.test(k));\n\nif (photoKeys.length < 1 || photoKeys.length > MAX_PHOTOS) {\n  errors.push(`Add between 1 and ${MAX_PHOTOS} damage photos.`);\n}\nfor (const k of photoKeys) {\n  if (!['image/jpeg', 'image/png'].includes(bin[k].mimeType)) errors.push(`Photo \"${bin[k].fileName}\" is not a JPG or PNG.`);\n  else if (sizeOf(bin[k]) > MAX_PHOTO_BYTES) errors.push(`Photo \"${bin[k].fileName}\" is too large.`);\n}\nif (invoiceKeys.length !== 1) {\n  errors.push('Add exactly one repair invoice or quote (PDF).');\n} else {\n  const inv = bin[invoiceKeys[0]];\n  if (inv.mimeType !== 'application/pdf') errors.push('The invoice must be a PDF.');\n  else if (sizeOf(inv) > MAX_INVOICE_BYTES) errors.push('The invoice PDF must be smaller than 8 MB.');\n}\n\nif (errors.length) return [{ json: { valid: false, errors } }];\n\n// Rename the files to stable names for the agents: photo_1 ... photo_n, invoice.\nconst binary = {};\nphotoKeys.forEach((k, i) => { binary[`photo_${i + 1}`] = bin[k]; });\nbinary.invoice = bin[invoiceKeys[0]];\n\nreturn [{\n  json: {\n    valid: true,\n    submission: {\n      policy_id: policyId,\n      contact_email: email,\n      claim_type: claimType,\n      incident_datetime: `${dt.slice(0, 16)}:00`,\n      incident_lat: Number(lat.toFixed(6)),\n      incident_lon: Number(lon.toFixed(6)),\n      incident_location: text('incident_location', 300) || null,\n      description,\n      claimed_amount: Math.round(amount * 1000) / 1000,\n      currency: 'TND',\n      photo_count: photoKeys.length,\n    },\n  },\n  binary,\n}];\n"
+      },
+      "id": "32c0e53d-b6b6-428c-8c99-803726ff0af0",
+      "name": "Validate submission",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "9d5df765-bdb3-4400-ae43-edf288742aca",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8300cdf0-1662-4a85-992b-13156a33821e",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gives the claim its ID and builds the record the orchestrator works from.\n// If you use an Airtable autonumber for claim IDs instead, create the Airtable row here\n// and take the ID from it.\nconst item = $input.first();\nconst year = new Date().getUTCFullYear();\nconst stamp = Date.now().toString(36).slice(-5).toUpperCase();\nconst rand = Math.random().toString(36).slice(2, 5).toUpperCase();\nconst claimId = `CLM-${year}-${stamp}${rand}`;\n\nreturn [{\n  json: {\n    claim: {\n      claim_id: claimId,\n      status: 'processing',\n      received_at: new Date().toISOString(),\n      ...item.json.submission,\n    },\n  },\n  binary: item.binary, // photo_1 ... photo_n and invoice, for the agents\n}];\n"
+      },
+      "id": "bce0c706-379f-4f1e-aa10-4065873f53a4",
+      "name": "Create claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ claim_id: $json.claim.claim_id, status: 'received', message: 'We have received your claim. You will get the decision by email.' }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "2d77fa45-6ec0-4f34-8206-5d090e1a0f2e",
+      "name": "Send claim ID (202)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": "",
+        "options": {}
+      },
+      "id": "e33fbfc6-66ce-46c6-9c4b-9878bdcc580d",
+      "name": "Run orchestrator",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        480
+      ],
+      "disabled": true,
+      "notes": "Enable and pick the main ClaimShield workflow. It receives $json.claim plus the files photo_1..photo_n and invoice as binary data."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ errors: $json.errors }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "61d0c703-7355-4969-b93a-20e196b7345c",
+      "name": "Send errors (400)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ClaimShield AI: claim intake\nThree webhooks in one workflow. **Activate the workflow** and open `<your n8n URL>/webhook/claim-form` in a browser.\n\n1. **GET /claim-form** serves the claim page (map pin, GPS button, photo and PDF upload).\n2. **GET /claim-geocode** is the page's address search, through Nominatim.\n3. **POST /claim-submit** validates the claim, answers 202 with the claim ID, then hands it to the orchestrator.\n\n**Setup:** put a team contact in the Nominatim User-Agent, then enable **Run orchestrator** and pick the main workflow.",
+        "height": 320,
+        "width": 640
+      },
+      "id": "bd2fe788-01ec-451d-848d-843e7a51c8f8",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -360
+      ]
+    }
+  ],
+  "connections": {
+    "Claim page (GET /claim-form)": {
+      "main": [
+        [
+          {
+            "node": "Render form page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render form page": {
+      "main": [
+        [
+          {
+            "node": "Send page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Address lookup (GET /claim-geocode)": {
+      "main": [
+        [
+          {
+            "node": "Build geocode request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build geocode request": {
+      "main": [
+        [
+          {
+            "node": "Lookup valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup valid?": {
+      "main": [
+        [
+          {
+            "node": "Nominatim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send lookup error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nominatim": {
+      "main": [
+        [
+          {
+            "node": "Shape geocode response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape geocode response": {
+      "main": [
+        [
+          {
+            "node": "Send address",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim submission (POST /claim-submit)": {
+      "main": [
+        [
+          {
+            "node": "Validate submission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate submission": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Create claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send errors (400)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create claim": {
+      "main": [
+        [
+          {
+            "node": "Send claim ID (202)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send claim ID (202)": {
+      "main": [
+        [
+          {
+            "node": "Run orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}

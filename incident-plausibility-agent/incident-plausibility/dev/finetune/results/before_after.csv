@@ -1,0 +1,10 @@
+,Qwen2.5-3B base (short prompt),Qwen2.5-3B + QLoRA (fine-tuned)
+valid JSON,20/80,80/80
+scenario acc,0.0,1.0
+impact-zone acc,0.0,1.0
+parts Jaccard,0.0,0.983
+contradiction precision,0.0,0.783
+contradiction recall,0.0,1.0
+quotes grounded,0/0,23/23
+abstention,0/1,1/1
+sec / answer (T4),9.0,9.5
