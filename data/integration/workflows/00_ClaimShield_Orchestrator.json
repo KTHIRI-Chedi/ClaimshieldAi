@@ -1,0 +1,1192 @@
+{
+  "id": "CSorchestrator01",
+  "name": "00_ClaimShield_Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "ClaimShield AI - Declare a car damage claim",
+        "formDescription": "Fill in the claim, attach 1 to 8 photos of the damage and the repair invoice (PDF). The result appears on this page when the analysis is done (it can take a few minutes).",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Policy number",
+              "fieldName": "policy_id",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. POL-1001"
+            },
+            {
+              "fieldLabel": "Date of the accident",
+              "fieldName": "incident_date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Time of the accident (HH:MM)",
+              "fieldName": "incident_time",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "e.g. 18:40"
+            },
+            {
+              "fieldLabel": "Where did it happen?",
+              "fieldName": "incident_location",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. Avenue Habib Bourguiba, Tunis, Tunisia"
+            },
+            {
+              "fieldLabel": "Type of claim",
+              "fieldName": "claim_type",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "collision"
+                  },
+                  {
+                    "option": "vandalisme"
+                  },
+                  {
+                    "option": "bris_de_glace"
+                  },
+                  {
+                    "option": "autre"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "What happened?",
+              "fieldName": "description",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Describe the accident in a few sentences"
+            },
+            {
+              "fieldLabel": "Repair amount claimed (TND)",
+              "fieldName": "claimed_amount",
+              "fieldType": "number",
+              "requiredField": true,
+              "placeholder": "e.g. 1450"
+            },
+            {
+              "fieldLabel": "Photos of the damage",
+              "fieldName": "photos",
+              "fieldType": "file",
+              "requiredField": true,
+              "multipleFiles": true,
+              "acceptFileTypes": ".jpg,.jpeg,.png"
+            },
+            {
+              "fieldLabel": "Repair invoice (PDF)",
+              "fieldName": "invoice",
+              "fieldType": "file",
+              "requiredField": true,
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf"
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {
+          "path": "claimshield",
+          "buttonLabel": "Submit claim",
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        300
+      ],
+      "id": "e62e4174-b2b5-4f4b-9cbb-0e3ba6376f44",
+      "name": "Claim Form",
+      "webhookId": "75093c56-4a3b-4f9f-a537-8cf91589d120"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the form answers into the claim that every agent reads, and gives it an ID.\n// Photos keep their binary keys (photos_0, photos_1...); the invoice PDF goes to \"invoice\".\nconst f = $input.first().json;\nconst bin = $input.first().binary ?? {};\nconst pad = n => String(n).padStart(2, '0');\nconst now = new Date();\nconst claim_id = `CLM-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;\n\nconst photos = {};\nlet invoice = null;\nfor (const [key, file] of Object.entries(bin)) {\n  if (key.startsWith('invoice')) invoice = file;\n  else if (String(file.mimeType).startsWith('image/')) photos[`photos_${Object.keys(photos).length}`] = file;\n}\n\nconst date = String(f.incident_date || '').slice(0, 10);\nconst time = /^\\d{1,2}:\\d{2}$/.test(String(f.incident_time || '').trim())\n  ? String(f.incident_time).trim().padStart(5, '0') : '12:00';\n\nconst claim = {\n  claim_id,\n  policy_id: String(f.policy_id || '').trim().toUpperCase(),\n  incident_date: date,\n  incident_datetime: `${date}T${time}:00`,\n  incident_location: String(f.incident_location || '').trim(),\n  claim_type: f.claim_type || 'collision',\n  description: String(f.description || '').trim(),\n  claimed_amount: Number(f.claimed_amount),\n  photo_count: Object.keys(photos).length,\n  has_invoice: invoice !== null,\n  submitted_at: now.toISOString(),\n};\n\nreturn [{ json: { stage: 'validate', claim }, binary: { ...photos, ...(invoice ? { invoice } : {}) } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "87c52c84-7efc-431c-8695-a76530c8ce78",
+      "name": "Prepare Claim"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "hyKQcsHn7Jr2K7qH",
+          "mode": "list",
+          "cachedResultName": "04_Validation_Fraud_Decision_Agent",
+          "cachedResultUrl": "/workflow/hyKQcsHn7Jr2K7qH"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "1412cf7e-bb2c-4a00-a620-dd9d07dd0186",
+      "name": "Validate Claim",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9a708567-10fd-4a99-a29b-30ea6fbc0ca8",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ],
+      "id": "a46feca9-fe41-45fe-b22c-79b5cbf35e43",
+      "name": "Claim valid?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// What the Visual Inspection agent expects: the claim fields plus the photos (photos_0, photos_1...).\nconst { claim } = $('Prepare Claim').first().json;\nconst { invoice, ...photos } = $('Prepare Claim').first().binary ?? {};\nreturn [{\n  json: {\n    claim_id: claim.claim_id,\n    description: claim.description,\n    incident_date: claim.incident_date,\n    photo_count: claim.photo_count,\n    claim_type: claim.claim_type,\n  },\n  binary: photos,\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        160
+      ],
+      "id": "2f352c3a-f4f5-4e6d-bba0-568a15ba5d99",
+      "name": "Visual Inspection Input"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "aQlE6lyhtVg2Xo4f",
+          "mode": "list",
+          "cachedResultName": "03_Visual_Inspection_Agent",
+          "cachedResultUrl": "/workflow/aQlE6lyhtVg2Xo4f"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "claim_id": "={{ $json.claim_id }}",
+            "description": "={{ $json.description }}",
+            "incident_date": "={{ $json.incident_date }}",
+            "photo_count": "={{ $json.photo_count }}",
+            "claim_type": "={{ $json.claim_type }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "claim_id",
+              "displayName": "claim_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "incident_date",
+              "displayName": "incident_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "photo_count",
+              "displayName": "photo_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "claim_type",
+              "displayName": "claim_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        160
+      ],
+      "id": "63f41389-4146-489c-8a89-bccca0357c2e",
+      "name": "Visual Inspection",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The Invoice Parser reads the invoice from a file path, so the uploaded PDF is saved to\n// /data/invoices/<claim_id>.pdf first (the data folder of the project, shared with n8n).\nconst { claim } = $('Prepare Claim').first().json;\nconst { invoice } = $('Prepare Claim').first().binary ?? {};\nreturn [{ json: { file_path: `/data/invoices/${claim.claim_id}.pdf`, claim_id: claim.claim_id }, binary: { invoice } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        160
+      ],
+      "id": "b5dec31e-b78c-4beb-8db0-be9d31104987",
+      "name": "Invoice File"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json.file_path }}",
+        "dataPropertyName": "invoice",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        160
+      ],
+      "id": "04e9021b-1b13-478f-876f-8f0bf0cab534",
+      "name": "Save Invoice File",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input of the Invoice Parser agent: the path of the saved PDF.\nreturn [{ json: { file_path: $('Invoice File').first().json.file_path } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        160
+      ],
+      "id": "4aa21359-0a3f-4136-a19d-10ae023d7a8f",
+      "name": "Invoice Parser Input"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "7uwN60tegMMIxTPn",
+          "mode": "list",
+          "cachedResultName": "03_Invoice_Parser_Agent",
+          "cachedResultUrl": "/workflow/7uwN60tegMMIxTPn"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1980,
+        160
+      ],
+      "id": "4ec93306-2ca8-436f-a27f-9c114b158c03",
+      "name": "Invoice Parser",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input of the Policy RAG agent: the claim (it turns it into a coverage question itself).\nconst { claim } = $('Prepare Claim').first().json;\nreturn [{ json: { claim: { claim_id: claim.claim_id, claim_type: claim.claim_type, description: claim.description } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        160
+      ],
+      "id": "5be99d2d-7030-4baa-a3ea-2ce96306cd8a",
+      "name": "Policy RAG Input"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "FwCOIOAfJsT7eTvB",
+          "mode": "list",
+          "cachedResultName": "RAG Agent & LLM-as-a-Judge Pipeline",
+          "cachedResultUrl": "/workflow/FwCOIOAfJsT7eTvB"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2420,
+        160
+      ],
+      "id": "d64d186e-d9d9-4d98-aca6-d3b3e17d79c5",
+      "name": "Policy RAG",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input of the Incident Plausibility agent: the story, where and when it happened,\n// and the parts on the invoice (to check they fit the accident).\nconst { claim } = $('Prepare Claim').first().json;\nconst inv = $('Invoice Parser').first().json;\nreturn [{\n  json: {\n    claim: {\n      claim_id: claim.claim_id,\n      incident_datetime: claim.incident_datetime,\n      incident_location: claim.incident_location,\n      description: claim.description,\n    },\n    invoice: { line_items: (inv.line_items || []).filter(li => li.part).map(li => ({ part: li.part })) },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        160
+      ],
+      "id": "ebe25fde-899f-4821-be60-fa8db13bc543",
+      "name": "Plausibility Input"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "VeGTlxAhlxLRtI3N",
+          "mode": "list",
+          "cachedResultName": "ClaimShield - Incident Plausibility Agent (local fine-tuned)",
+          "cachedResultUrl": "/workflow/VeGTlxAhlxLRtI3N"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2860,
+        160
+      ],
+      "id": "770f09d8-3443-46b1-ac48-19a8f8fbc089",
+      "name": "Incident Plausibility",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Puts every agent's answer into the format the Fraud Risk & Decision agent reads.\n// An agent that failed is passed as { error: true } so the claim goes to a human.\nconst failure = (r, name) => {\n  if (r && !r.error) return null;\n  const e = r?.error;\n  const message = typeof e === 'string' ? e : e?.message || r?.error_message || r?.reason || `${name} returned nothing`;\n  return { error: true, error_message: String(message).slice(0, 500) };\n};\nconst first = name => { try { return $(name).first().json; } catch (e) { return null; } };\n\nconst claim = $('Prepare Claim').first().json.claim;\nconst validation = first('Validate Claim');\n\n// Visual Inspection (Fedi): field names differ slightly from the decision agent's.\nconst v = first('Visual Inspection');\nconst visual = failure(v, 'Visual Inspection') || {\n  ...v,\n  damaged_parts: v.damaged_parts ?? v.damaged_items ?? [],\n  photo_reused: v.duplicate_photo_detected === true,\n  reused_from_claims: (v.duplicate_photos || []).map(d => d.previous_claim_id),\n  same_vehicle_across_photos: v.same_asset_across_photos,\n};\n\nconst inv = first('Invoice Parser');\nconst invoice = failure(inv, 'Invoice Parser') || inv;\n\nconst rag = first('Policy RAG');\nconst policy_rag = failure(rag && rag.coverage_status ? rag : { error: rag?.error || 'no coverage_status in the answer' }, 'Policy RAG') || {\n  coverage_status: rag.coverage_status, cited_clauses: rag.cited_clauses, reasoning: rag.reasoning, eval_score: rag.eval_score,\n};\n\nconst pl = first('Incident Plausibility');\nconst plausibility = failure(pl && pl.agent ? pl : { error: pl?.error || 'no result' }, 'Incident Plausibility') || pl;\n\nreturn [{ json: { stage: 'decide', claim, validation, visual, invoice, policy_rag, plausibility } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        160
+      ],
+      "id": "4f5e7e35-c2db-4294-b2a4-6d9aa228735f",
+      "name": "Collect Agent Results"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "hyKQcsHn7Jr2K7qH",
+          "mode": "list",
+          "cachedResultName": "04_Validation_Fraud_Decision_Agent",
+          "cachedResultUrl": "/workflow/hyKQcsHn7Jr2K7qH"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3300,
+        160
+      ],
+      "id": "992f6218-04dd-497d-bd35-6f305faea3a3",
+      "name": "Decide",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The decision record: what was decided and why, plus each agent's short result.\nconst d = $input.first().json;\nconst input = $('Collect Agent Results').first().json;\nconst { claim } = input;\nconst ok = d.route && !d.error;\nconst summary = (r, text) => (r && !r.error ? text(r) : `failed: ${r?.error_message || 'no result'}`);\n\nreturn [{\n  json: {\n    claim_id: claim.claim_id,\n    policy_id: claim.policy_id,\n    incident_date: claim.incident_date,\n    claimed_amount: claim.claimed_amount,\n    route: ok ? d.route : 'human_review',\n    risk_score: d.risk_score ?? null,\n    rule_score: d.rule_score ?? null,\n    llm_adjustment: d.llm_adjustment ?? null,\n    warning_signs: d.warning_signs ?? [],\n    route_reasons: ok ? d.route_reasons : [`Decision agent failed: ${d.error?.message || d.error || 'no result'}`],\n    justification: d.justification ?? '',\n    coverage: d.coverage ?? null,\n    missing_inputs: d.missing_inputs ?? [],\n    deductible: input.validation?.policy?.deductible ?? null,\n    agents: {\n      visual: summary(input.visual, v => v.summary || `severity ${v.damage_severity}/5, damaged: ${(v.damaged_parts || []).join(', ')}`),\n      invoice: summary(input.invoice, i => `${i.status}${i.arithmetic_issue ? `: ${i.arithmetic_issue}` : ''} (${(i.line_items || []).length} lines)`),\n      policy_rag: summary(input.policy_rag, p => `${p.coverage_status}${p.cited_clauses?.length ? ` (${p.cited_clauses.join(', ')})` : ''}`),\n      plausibility: summary(input.plausibility, p => p.summary),\n      photos: (() => {\n        const pc = input.validation?.photo_checks;\n        if (!pc) return 'not checked';\n        return `${pc.photos_checked} checked, ${pc.photo_reused ? `reused from ${pc.reused_from_claims.join(', ')}` : 'none reused'}, dates: ${pc.photo_taken_dates.join(', ') || 'none in the files'}`;\n      })(),\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        160
+      ],
+      "id": "b8780dbb-86c4-4e92-9865-1b5824c14901",
+      "name": "Decision Record"
+    },
+    {
+      "parameters": {
+        "jsCode": "// A claim that failed validation is rejected before any AI agent runs.\nconst v = $input.first().json;\nconst { claim } = $('Prepare Claim').first().json;\nconst reasons = v.error\n  ? [`Validation could not run: ${v.error?.message || v.error}`]\n  : (v.reasons?.length ? v.reasons : ['Claim is not valid']);\nreturn [{\n  json: {\n    claim_id: claim.claim_id,\n    policy_id: claim.policy_id,\n    incident_date: claim.incident_date,\n    claimed_amount: claim.claimed_amount,\n    route: 'rejected',\n    risk_score: null,\n    warning_signs: [],\n    route_reasons: reasons,\n    agents: {},\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        460
+      ],
+      "id": "70b2598f-51b2-4a36-bc01-7c9e51b13110",
+      "name": "Rejection Record"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "auto_approve",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "f52f4e05-f06e-4747-a834-420209188419"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Auto-approve"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "human_review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "f5459a9a-ad46-4caf-9e9f-90b0ff6c1f7c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Human review"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "fraud_investigation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "adf19f1b-7eff-4c1d-a149-a6a15b27153f"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Fraud investigation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "rejected",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "43ba2bf7-2084-4e2b-a8b6-9deb6c947e34"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Rejected"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3760,
+        300
+      ],
+      "id": "ae5c1a3f-1a45-4218-998c-6b89c4b26db4",
+      "name": "Route"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7f5acb47-25e7-4652-9c56-27d6617ebc7b",
+              "name": "customer_message",
+              "value": "=Good news: your claim {{ $json.claim_id }} is approved. The repair amount of {{ $json.claimed_amount }} TND, minus your deductible of {{ $json.deductible ?? 0 }} TND, will be paid to you.",
+              "type": "string"
+            },
+            {
+              "id": "2cef6a86-a194-4fc0-86ef-d58560fa0a45",
+              "name": "next_action",
+              "value": "Approval email to the customer, Airtable update, payment request (mock endpoint)",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4000,
+        60
+      ],
+      "id": "627f141d-d5fb-42e0-8e4e-6e999dcde5b6",
+      "name": "Auto-approve Action"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6119671f-45da-4b26-b6a6-deb362525b42",
+              "name": "customer_message",
+              "value": "=Your claim {{ $json.claim_id }} has been received. One of our adjusters is reviewing it and will contact you shortly.",
+              "type": "string"
+            },
+            {
+              "id": "f3a82416-3265-4f66-8c43-38381f6c457c",
+              "name": "next_action",
+              "value": "Slack approval request to an adjuster",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4000,
+        240
+      ],
+      "id": "6c86b2c1-52a6-426c-a14b-817fb2fd8dd8",
+      "name": "Human review Action"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bbe4622e-5998-490e-bcd5-612c1c27f60f",
+              "name": "customer_message",
+              "value": "=Your claim {{ $json.claim_id }} has been received. One of our adjusters is reviewing it and will contact you shortly.",
+              "type": "string"
+            },
+            {
+              "id": "25bca093-ccbc-4515-9053-d780b5a7f19f",
+              "name": "next_action",
+              "value": "Investigation ticket and Slack alert to the fraud team (the customer is never told)",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4000,
+        420
+      ],
+      "id": "ea54889d-7706-4417-bcb2-fef80f9d0194",
+      "name": "Fraud investigation Action"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dd246f9a-974f-4e10-9e2a-01b530fdebf9",
+              "name": "customer_message",
+              "value": "=Your claim {{ $json.claim_id }} could not be accepted: {{ $json.route_reasons.join('; ') }}",
+              "type": "string"
+            },
+            {
+              "id": "c5d5d4f1-e0c1-4d98-b2a0-8bed1a454343",
+              "name": "next_action",
+              "value": "Rejection email to the customer",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4000,
+        600
+      ],
+      "id": "50a3fa99-1db6-40c9-955d-3a73258d635f",
+      "name": "Rejected Action"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Builds the result page shown after the form is submitted: what the customer sees,\n// and below it the internal decision record (for the demo).\nconst r = $input.first().json;\nconst started = new Date($('Prepare Claim').first().json.claim.submitted_at);\nconst seconds = Math.round((Date.now() - started) / 1000);\nconst esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c]));\nconst COLORS = { auto_approve: '#1a7f37', human_review: '#9a6700', fraud_investigation: '#cf222e', rejected: '#57606a' };\nconst LABELS = { auto_approve: 'Auto-approved', human_review: 'Human review', fraud_investigation: 'Fraud investigation', rejected: 'Rejected' };\n\nconst signs = (r.warning_signs || []).map(s => `<li><b>${esc(s.code)}</b> (+${s.points}): ${esc(s.detail)}</li>`).join('') || '<li>None</li>';\nconst reasons = (r.route_reasons || []).map(x => `<li>${esc(x)}</li>`).join('');\nconst agents = Object.entries(r.agents || {}).map(([k, v]) => `<tr><td style=\"padding:4px 8px;color:#57606a\">${esc(k)}</td><td style=\"padding:4px 8px\">${esc(v)}</td></tr>`).join('');\n\nconst html = `\n<div style=\"font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;padding:24px 28px;background:#fff;border:1px solid #d0d7de;border-radius:10px;text-align:left;line-height:1.5;font-size:15px\">\n  <h2 style=\"margin-bottom:4px\">Claim ${esc(r.claim_id)}</h2>\n  <div style=\"padding:14px;border-radius:8px;background:#f6f8fa;margin:12px 0\">${esc(r.customer_message)}</div>\n  <h3 style=\"margin-top:24px\">Internal decision record (demo)</h3>\n  <p><span style=\"background:${COLORS[r.route] || '#57606a'};color:#fff;padding:4px 10px;border-radius:12px\">${LABELS[r.route] || esc(r.route)}</span>\n  ${r.risk_score !== null && r.risk_score !== undefined ? `&nbsp; Risk score <b>${r.risk_score}</b>/100 (rules ${r.rule_score}, AI +${r.llm_adjustment})` : ''}</p>\n  <p><b>Next action:</b> ${esc(r.next_action)}</p>\n  <p style=\"margin:12px 0 0\"><b>Why:</b></p><ul style=\"margin:4px 0 12px 20px;padding:0\">${reasons}</ul>\n  <p style=\"margin:12px 0 0\"><b>Warning signs:</b></p><ul style=\"margin:4px 0 12px 20px;padding:0\">${signs}</ul>\n  ${r.justification ? `<p><b>AI justification:</b> ${esc(r.justification)}</p>` : ''}\n  ${agents ? `<p><b>Agent results:</b></p><table style=\"border-collapse:collapse;font-size:14px\">${agents}</table>` : ''}\n  <p style=\"color:#57606a;font-size:13px\">Processed in ${seconds} s. Saved to Airtable (Claims).</p>\n</div>`;\n\nreturn [{ json: { ...r, html } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4240,
+        300
+      ],
+      "id": "5cfe5bee-0707-4ddf-b2a9-39e56761484d",
+      "name": "Final Record"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appZtl8F9FIRb9jo7",
+          "mode": "list",
+          "cachedResultName": "ClaimShield",
+          "cachedResultUrl": "https://airtable.com/appZtl8F9FIRb9jo7"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblz4EgeHgNk1kThj",
+          "mode": "list",
+          "cachedResultName": "Claims",
+          "cachedResultUrl": "https://airtable.com/appZtl8F9FIRb9jo7/tblz4EgeHgNk1kThj"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "claim_id": "={{ $json.claim_id }}",
+            "policy_id": "={{ $json.policy_id }}",
+            "incident_date": "={{ $json.incident_date }}",
+            "claimed_amount": "={{ $json.claimed_amount }}",
+            "status": "={{ $json.route }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "claim_id",
+              "displayName": "claim_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "policy_id",
+              "displayName": "policy_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "incident_date",
+              "displayName": "incident_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "claimed_amount",
+              "displayName": "claimed_amount",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        4460,
+        300
+      ],
+      "id": "175b0315-1f41-4419-93a4-fdef4ac354fa",
+      "name": "Save Claim To Airtable",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "WStSocW5WEVyZHk7",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $('Final Record').first().json.html }}"
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        4680,
+        300
+      ],
+      "id": "75779ba0-c875-45c3-9125-43415dcbd55f",
+      "name": "Result Page",
+      "webhookId": "080764dd-464d-455d-965a-4f10f7e65ce6"
+    },
+    {
+      "parameters": {
+        "content": "## ClaimShield AI - main workflow (orchestrator)\n1. **Claim Form**: the web page where a claim is declared (open it with the form URL).\n2. **Validate Claim**: policy and required fields (agent 04, stage validate). Invalid claims are rejected before any AI call.\n3. **Agents**: Visual Inspection (photos) → Invoice Parser (PDF) → Policy RAG (coverage) → Incident Plausibility (story vs map, weather, invoice).\n4. **Decide**: agent 04, stage decide: risk score and route.\n5. **Route**: one action per route, then the claim is saved in Airtable and the result page is shown.\n\nAn agent that fails does not stop the claim: it is sent to human review.",
+        "height": 330,
+        "width": 560,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -260
+      ],
+      "id": "e47cc6be-897c-451b-abe7-1e4ff791d7d1",
+      "name": "About"
+    }
+  ],
+  "connections": {
+    "Claim Form": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claim": {
+      "main": [
+        [
+          {
+            "node": "Validate Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Claim": {
+      "main": [
+        [
+          {
+            "node": "Claim valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim valid?": {
+      "main": [
+        [
+          {
+            "node": "Visual Inspection Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejection Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visual Inspection Input": {
+      "main": [
+        [
+          {
+            "node": "Visual Inspection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visual Inspection": {
+      "main": [
+        [
+          {
+            "node": "Invoice File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice File": {
+      "main": [
+        [
+          {
+            "node": "Save Invoice File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Invoice File": {
+      "main": [
+        [
+          {
+            "node": "Invoice Parser Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Parser Input": {
+      "main": [
+        [
+          {
+            "node": "Invoice Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Parser": {
+      "main": [
+        [
+          {
+            "node": "Policy RAG Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy RAG Input": {
+      "main": [
+        [
+          {
+            "node": "Policy RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy RAG": {
+      "main": [
+        [
+          {
+            "node": "Plausibility Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plausibility Input": {
+      "main": [
+        [
+          {
+            "node": "Incident Plausibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident Plausibility": {
+      "main": [
+        [
+          {
+            "node": "Collect Agent Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Agent Results": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "Decision Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Record": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Record": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Auto-approve Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Human review Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fraud investigation Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejected Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-approve Action": {
+      "main": [
+        [
+          {
+            "node": "Final Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Human review Action": {
+      "main": [
+        [
+          {
+            "node": "Final Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fraud investigation Action": {
+      "main": [
+        [
+          {
+            "node": "Final Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejected Action": {
+      "main": [
+        [
+          {
+            "node": "Final Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Record": {
+      "main": [
+        [
+          {
+            "node": "Save Claim To Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Claim To Airtable": {
+      "main": [
+        [
+          {
+            "node": "Result Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

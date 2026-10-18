@@ -1,0 +1,32 @@
+# ---- Secrets: never commit ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Runtime state (contains encrypted credentials, the n8n encryption key,
+#      execution history with client photos and personal data) ----
+n8n_data/
+qdrant_data/
+
+# ---- Generated at run time ----
+data/invoices/
+data/photo_hashes.csv
+data/integration/backup/
+
+# ---- Too large for GitHub (1.9 GB); share it separately ----
+model/*.gguf
+
+# ---- Old exports named by n8n id; the current ones are in data/integration/workflows ----
+integration/_n8n_snapshot/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+

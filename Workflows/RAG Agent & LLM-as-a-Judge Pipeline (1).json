@@ -1,0 +1,684 @@
+{
+  "name": "RAG Agent & LLM-as-a-Judge Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        -128,
+        176
+      ],
+      "id": "2658b227-d90f-4fb3-b3be-f86a4e13fbe8",
+      "name": "When chat message received",
+      "webhookId": "e3ce4787-355b-4506-9310-35716f9c800c"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=={{ $json.current_query }}",
+        "options": {
+          "systemMessage": "CRITICAL RULE: YOU ARE FORBIDDEN FROM ANSWERING FROM YOUR OWN KNOWLEDGE. \nYou MUST call the `hdfc_policy_search` tool for EVERY single query before responding, even if the query seems generic or simple.\nCRITICAL RULE: DO NOT ASK CLARIFYING QUESTIONS TO THE USER.\nIf a query is ambiguous or vague (e.g., \"What's the deductible percentage?\"), immediately call `hdfc_policy_search` with keywords for BOTH domains (e.g., \"Liberty motor compulsory deductible IMT 22 HDFC Poorna Suraksha limits\") and present the relevant rules for both policies in sentence 1.\nYou are an expert Insurance QA Compliance Officer specializing in HDFC Life Poorna Suraksha (Life/Critical Illness) and Liberty Private Car Package Policies (Motor Insurance).\n\n=== CORE OPERATIONAL RULES ===\n\n1. MANDATORY TOOL CALLING:\n   - You MUST invoke the `hdfc_policy_search` tool for EVERY user query before generating an answer.\n   - Never answer using general knowledge or unverified assumptions.\n   - Lead directly with the verified answer in Sentence 1. Avoid canned intro greetings or conversational pleasantries.\n\n2. QUERY EXTRACTION & KEYWORD CONFLICT GUARDRAIL:\n   - Identify whether the query relates to Life/Critical Illness or Motor Insurance.\n   - Include specific technical terms, section tags, or code acronyms in the search tool input (e.g., \"IMT 22 compulsory deductible\", \"AD-07 engine water ingression\", or \"Part C surrender value formula\").\n\n3. CROSS-POLICY EXPLICIT SCOPE HANDLING:\n   - If a user asks about physical vehicle damage while referencing a Life policy (or vice versa), explicitly state the scope boundaries:\n     * Physical car repairs, towing, or theft are governed under the Liberty Motor Policy.\n     * Death, terminal illness, or listed 29 critical illnesses are covered under the HDFC Life Policy.\n\n4. GROUNDEDNESS & EXACT CITATIONS:\n   - Quote exact section numbers, IMT endorsement codes, or Annexure references present in the retrieved text (e.g., \"Under Section I of Liberty Motor Policy...\" or \"As per Part F Clause 1.i of HDFC Poorna Suraksha...\").\n   - Maintain exact numerical limits (e.g., \"50% depreciation on rubber parts\", \"90-day critical illness waiting period\", \"180-day accidental death window\").\n\n5. FALLBACK RULE:\n   - If the retrieved context from `hdfc_policy_search` does not contain explicit information to answer the query, output ONLY:\n     \"Information not found in the retrieved policy clauses. Please consult the master policy document or contact customer support.\"\nSTRICT DOMAIN BOUNDARY RULE:\n- You are strictly restricted to HDFC Life Poorna Suraksha and Liberty Private Car Policy data.\n- For ANY non-insurance query (e.g., weather, sports, general knowledge) or if `hdfc_policy_search` returns no relevant clauses, output EXACTLY:\n  \"Information not found in the retrieved policy clauses. Please consult the master policy document or contact customer support.\"\n- Do NOT generate custom conversational refusal messages or discuss your role."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        384,
+        176
+      ],
+      "id": "da09b69c-d9c7-4a65-b5d6-0d0734656cc4",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        464,
+        400
+      ],
+      "id": "34839ebe-c972-487d-9104-f23a24cd4c00",
+      "name": "Simple Memory",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "model": "=nvidia/nemotron-3-embed-1b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        608
+      ],
+      "id": "3f7c9f7d-433a-46d1-8549-3e2f332e6a5d",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "SPONP3X9OugaVEBi",
+          "name": "NVIDIA_NIM_Free"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "topN": 5
+      },
+      "type": "@n8n/n8n-nodes-langchain.rerankerCohere",
+      "typeVersion": 1,
+      "position": [
+        736,
+        608
+      ],
+      "id": "415c40f5-e10c-42cd-a278-24de37c6ae31",
+      "name": "Reranker Cohere",
+      "credentials": {
+        "cohereApi": {
+          "id": "drsP1GycxoylXmzl",
+          "name": "Cohere account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a strict QA Compliance Evaluator for an Insurance RAG System.\n\nUSER QUERY:\n{{ $json.user_query }}\n\nAGENT RESPONSE TO EVALUATE:\n{{ $json.agent_output }}\n\nEVALUATION RULES:\n1. PASS CONDITION (\"pass\": true): The response MUST contain explicit insurance policy facts, numerical values, clause references, or specific terms (e.g., waiting periods, depreciation %, IMT codes, cover limits) retrieved from the database.\n2. FAIL CONDITION (\"pass\": false): If the response contains any fallback disclaimer (e.g., \"Information not found\", \"consult customer support\"), refusals, small talk, or general non-policy answers, it is INVALID (\"pass\": false).\n\nOutput ONLY valid JSON:\n- If valid policy facts are present:\n  {\"score\": 5, \"pass\": true, \"reasoning\": \"Response contains verified policy clauses.\"}\n- If fallback text, refusal, or missing policy context:\n  {\"score\": 1, \"pass\": false, \"reasoning\": \"Response contains fallback disclaimer or lacks retrieved policy context.\"}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1168,
+        48
+      ],
+      "id": "0346fda6-028f-4ee4-addb-2ec278385c60",
+      "name": "LLM Chain Evaluator"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen/qwen3.8-27b",
+          "mode": "list",
+          "cachedResultName": "qwen/qwen3.8-27b"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "maxTokens": 200,
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1248,
+        288
+      ],
+      "id": "271a06fa-328a-408b-8323-5856f218eee2",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "42WoSR0o3kcSzDtW",
+          "name": "Groq"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Extract incoming LLM evaluation output safely in 'Run Once for Each Item' mode\nconst inputJson = $json || {};\nconst rawText = inputJson.text || inputJson.output || inputJson.message?.content || (typeof inputJson === 'string' ? inputJson : JSON.stringify(inputJson));\n\nlet parsedEval = {};\n\ntry {\n  // Strip markdown code fences if present\n  const cleanedText = String(rawText).replace(/```json/g, '').replace(/```/g, '').trim();\n  parsedEval = JSON.parse(cleanedText);\n} catch (e) {\n  // Safe fallback if JSON parsing fails\n  parsedEval = {\n    score: 1,\n    pass: false,\n    reasoning: \"Failed to parse evaluator JSON response.\"\n  };\n}\n\nreturn {\n  score: Number(parsedEval.score) || 1,\n  pass: String(parsedEval.pass).toLowerCase() === 'true',\n  reasoning: parsedEval.reasoning || \"No reasoning provided.\"\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        48
+      ],
+      "id": "18cd2159-21ad-4c50-90fe-1e35a06d8420",
+      "name": "JSON Cleaner"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a101d3aa-134f-47f2-b128-31b9fec74b48",
+              "name": "output",
+              "value": "=={{ $('Payload Assembler').first().json.agent_output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1968,
+        -48
+      ],
+      "id": "e1daf718-b822-4eb5-bf9a-8c0f94cde2aa",
+      "name": "Output Valid Response"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get user query safely from the Chat Trigger\nconst userQuery = $('When chat message received').first()?.json?.chatInput || '';\n\n// Get output safely from the AI Agent node\nconst agentOutput = $input.item?.json?.output || $input.item?.json?.text || '';\n\nreturn {\n  json: {\n    user_query: userQuery,\n    agent_output: agentOutput,\n    eval_timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        48
+      ],
+      "id": "b0ac81e5-3ef5-4026-891d-318c668b50ce",
+      "name": "Payload Assembler"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen/qwen3.8-27b",
+          "mode": "list",
+          "cachedResultName": "qwen/qwen3.8-27b"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "maxTokens": 200,
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        336,
+        400
+      ],
+      "id": "e2aaf3de-f63b-418a-b299-3ee840574d3f",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "42WoSR0o3kcSzDtW",
+          "name": "Groq"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Use this tool to search policy clauses across two integrated knowledge bases:\n1. HDFC Life Poorna Suraksha (UIN 101N137V02): Life cover, 29 Critical Illnesses, 90-day waiting periods, surrender value formulas, lapse/revival, and claim procedures.\n2. Liberty Private Car Policy (UIN IRDAN150RP0035V02201213): Vehicle damage, age-wise depreciation schedules, Third-Party liability, IMT Endorsements (IMT 1-65), EV Secure Add-ons (AD-17/18), and Roadside Assistance (AD-05).\n\nInput MUST be technical search terms or exact codes (e.g., \"AD-16 tyre protect tread depth\" or \"critical illness waiting period\"). NEVER pass static policy titles.\nMandatory tool to search policy clauses for HDFC Poorna Suraksha (Life/Critical Illness) and Liberty Private Car Policy (Motor Insurance). Call this tool for all coverage, deductible, waiting period, and depreciation queries.",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "policy_clauses",
+          "mode": "list",
+          "cachedResultName": "policy_clauses"
+        },
+        "topK": 20,
+        "useReranker": true,
+        "options": {
+          "contentPayloadKey": "content",
+          "metadataPayloadKey": "metadata"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        400
+      ],
+      "id": "4ca54b03-ddfb-45d9-b978-c6fd40c2be33",
+      "name": "hdfc_policy_search",
+      "credentials": {
+        "qdrantApi": {
+          "id": "DA9IF6z39EiJXHZ8",
+          "name": "Local_Qdrant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preserve original chat input and set initial retry count\nconst inputData = $input.first()?.json || {};\nconst chatInput = inputData.chatInput || inputData.query || '';\n\nreturn {\n  json: {\n    user_query: chatInput,\n    current_query: chatInput,\n    retry_count: 0\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        176
+      ],
+      "id": "4b60263d-36b3-4f77-88eb-b91e4ae3864f",
+      "name": "Initialize Retry Counter"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b40023dc-4f05-4356-aad3-4a8034085ce3",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 4,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1744,
+        48
+      ],
+      "id": "da015257-cdcf-442e-8767-9cc5bc660b64",
+      "name": "Gatekeeper Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c3d8b340-d7e5-410d-b6c0-72180d624041",
+              "leftValue": "={{ $('Increment Retry Count').isExecuted ? $('Increment Retry Count').last().json.retry_count : $('Initialize Retry Counter').first().json.retry_count }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1968,
+        144
+      ],
+      "id": "14cc60b9-75b5-4159-bd36-31d3ee8fc7ab",
+      "name": "Check Retry Limit"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1b5cd4b-a97b-4efb-8507-3a47b207d58e",
+              "name": "output",
+              "value": "This policy response requires secondary manual verification.",
+              "type": "string"
+            },
+            {
+              "id": "2d7ace04-dc18-47e6-875a-d96a2ff67065",
+              "name": "status",
+              "value": "FAILED_QUALITY_CHECK",
+              "type": "string"
+            },
+            {
+              "id": "353e3c97-9acd-4e6a-a078-878721e2a4fb",
+              "name": "failure_reason",
+              "value": "={{ $json.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "c6578128-283c-40b8-bb7c-c621d27f5875",
+              "name": "eval_score",
+              "value": "={{ $json.score }}",
+              "type": "number"
+            },
+            {
+              "id": "21954223-81ee-4b6a-9aa6-c1460bf37403",
+              "name": "rejected_agent_output",
+              "value": "={{ $json.agent_output }}",
+              "type": "string"
+            },
+            {
+              "id": "fe421d3e-d343-4fc0-bf29-ccb84ff6e9dc",
+              "name": "user_query",
+              "value": "={{ $json.user_query }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2256,
+        0
+      ],
+      "id": "bacbada2-35e0-4c25-bd2c-c47167791fb2",
+      "name": "Fallback Disclaimer"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert Insurance Query Optimizer for a RAG retrieval system.\n\nThe previous vector search failed to retrieve the necessary policy clauses for the following inquiry.\n\nORIGINAL USER QUERY:\n{{ $('Initialize Retry Counter').first().json.user_query }}\n\nFAILED ANSWER PRODUCED:\n{{ $('Payload Assembler').first().json.agent_output }}\n\nEVALUATOR REASONING FOR FAILURE:\n{{ $json.reasoning }}\n\nTASK:\nAnalyze the evaluator feedback and generate a refined, highly specific technical query (3 to 6 keywords) for the vector database.\n- Use explicit policy terminology, clause references, or codes (e.g., \"IMT 22 compulsory deductible\", \"AD-17 charger protection\", \"Poorna Suraksha waiting period\").\n- Do NOT output explanations or conversational text.\n- Output ONLY the refined raw search query string.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2192,
+        288
+      ],
+      "id": "7f8655fd-cc4c-45b7-a50c-10d6f786768e",
+      "name": "Query Reformulator"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen/qwen3.8-27b",
+          "mode": "list",
+          "cachedResultName": "qwen/qwen3.8-27b"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 150
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2272,
+        528
+      ],
+      "id": "6e8e76d9-99ca-4e7a-aabc-a67fa80f8046",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "42WoSR0o3kcSzDtW",
+          "name": "Groq"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Incoming item from Query Reformulator\nconst inputJson = $input.first()?.json || {};\nconst newQuery = inputJson.text || inputJson.output || '';\n\n// Safely pull state from upstream evaluation nodes\nconst payloadData = $('Payload Assembler').first()?.json || {};\nconst evalData = $('LLM Chain Evaluator').first()?.json || {};\n\nconst userQuery = payloadData.user_query || '';\nconst currentRetries = payloadData.retry_count || 0;\n\nreturn {\n  json: {\n    user_query: userQuery,\n    current_query: newQuery || userQuery,\n    retry_count: currentRetries + 1,\n    last_reasoning: evalData.reasoning || ''\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2544,
+        288
+      ],
+      "id": "6217058f-702a-47d1-91e8-8655eebd3965",
+      "name": "Increment Retry Count"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2768,
+        416
+      ],
+      "id": "bd40bcd0-f1ad-4734-898c-b6cdc93e1f32",
+      "name": "Wait",
+      "webhookId": "807c07a5-ecc4-41c6-8cfe-68f43a86d631"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Initialize Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "hdfc_policy_search",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reranker Cohere": {
+      "ai_reranker": [
+        [
+          {
+            "node": "hdfc_policy_search",
+            "type": "ai_reranker",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Payload Assembler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "LLM Chain Evaluator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Chain Evaluator": {
+      "main": [
+        [
+          {
+            "node": "JSON Cleaner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSON Cleaner": {
+      "main": [
+        [
+          {
+            "node": "Gatekeeper Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload Assembler": {
+      "main": [
+        [
+          {
+            "node": "LLM Chain Evaluator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hdfc_policy_search": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatekeeper Check": {
+      "main": [
+        [
+          {
+            "node": "Output Valid Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Fallback Disclaimer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Reformulator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Disclaimer": {
+      "main": [
+        []
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Query Reformulator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Reformulator": {
+      "main": [
+        [
+          {
+            "node": "Increment Retry Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Retry Count": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8e1a9ff4-335d-4847-a6d2-34ffd1b5a98f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f855807136de3bb627dfdb74ebd79e17ad873a503ef00a59730c1031c28635c"
+  },
+  "nodeGroups": [],
+  "id": "tzhK9oclX70xj6aK",
+  "tags": []
+}

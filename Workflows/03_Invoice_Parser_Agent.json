@@ -1,0 +1,852 @@
+{
+  "id": "7uwN60tegMMIxTPn",
+  "name": "03_Invoice_Parser_Agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        -144
+      ],
+      "id": "9687961e-d80a-432f-bb03-f0467077554a"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "name": "When called by the validation agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -480,
+        64
+      ],
+      "id": "85cffcbf-89ab-43f1-81bb-9d46eadfba11"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "file_path",
+              "value": "={{ $json.file_path || $json.invoice_path || $json.claim?.invoice_path || '/data/invoices/INV-001.pdf' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Invoice Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -256,
+        -32
+      ],
+      "id": "70667659-8e3d-4f98-9845-5ed89ffc6454"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.file_path }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "name": "Read Invoice File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -32
+      ],
+      "id": "3f788202-2108-4a60-a801-9837227b8750",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst index = items.findIndex((i) => i.binary?.data);\nif (index === -1) {\n  throw new Error(`Invoice file not found: ${$('Invoice Input').first().json.file_path}`);\n}\nreturn [{ json: items[index].json, binary: items[index].binary, pairedItem: { item: index } }];"
+      },
+      "name": "Check File Found",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -32
+      ],
+      "id": "d6f0061d-63f4-4298-851b-9fb17fcf4e5f",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        432,
+        -240
+      ],
+      "id": "8c94769c-cff5-4016-81db-65004cc1f043",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Use the native text only for PDFs whose text layer actually contains the amounts.\n// Scans, photos and PDFs with only a text header go to OCR.\nconst binary = $('Check File Found').item.binary;\nconst isPdf = (binary.data.mimeType || '').includes('pdf') || /\\.pdf$/i.test(binary.data.fileName || '');\nconst text = isPdf ? String($json.text || '').trim() : '';\nconst amounts = (text.match(/\\d[\\d\\s.,]*[.,]\\d{2,3}(?!\\d)/g) || []).length;\nreturn {\n  json: {\n    file_path: $('Invoice Input').first().json.file_path,\n    file_type: binary.data.mimeType,\n    invoice_text: text,\n    has_text_layer: text.replace(/\\s/g, '').length >= 50 && amounts >= 2,\n  },\n  binary,\n};"
+      },
+      "name": "Detect Text Layer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -32
+      ],
+      "id": "801489d7-a948-497b-a883-f2910787cb9e"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.has_text_layer }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Has Text Layer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        848,
+        -32
+      ],
+      "id": "3aece7ec-b357-4564-9b41-4d00912a2d32"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "extraction_method",
+              "value": "native_pdf_text",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Native Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1088,
+        -144
+      ],
+      "id": "6db7e535-8e87-4c43-befb-104e2768c163"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloud.llamaindex.ai/api/v2/parse/upload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LLAMA_CLOUD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "configuration",
+              "value": "{\"tier\": \"cost_effective\", \"version\": \"latest\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "LlamaParse Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1088,
+        128
+      ],
+      "id": "dcc95394-1a34-4318-a7e0-185a212556a5",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "name": "Wait 3s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1312,
+        128
+      ],
+      "id": "5a89f9cd-74cc-46e7-b409-ba035b017482",
+      "webhookId": "inv-wait-3s"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.cloud.llamaindex.ai/api/v2/parse/{{ $('LlamaParse Upload').first().json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LLAMA_CLOUD_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "LlamaParse Job Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        128
+      ],
+      "id": "740588fd-2136-4583-9334-c538d55e341d",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const status = $json.job?.status;\nif (['FAILED', 'CANCELLED'].includes(status)) throw new Error(`LlamaParse job ${status}`);\nif ($runIndex > 40) throw new Error('LlamaParse timeout (job still pending)');\nreturn { json: { ...$json, done: status === 'COMPLETED' } };"
+      },
+      "name": "Check Job Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        128
+      ],
+      "id": "023ab469-0aaa-495b-9d5e-cb3640fc540a",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Job Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1968,
+        128
+      ],
+      "id": "17c8b858-73b6-4622-994b-f8f125418949"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.cloud.llamaindex.ai/api/v2/parse/{{ $('LlamaParse Upload').first().json.id }}?expand=markdown_full",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LLAMA_CLOUD_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "LlamaParse Markdown",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2192,
+        64
+      ],
+      "id": "de2297e8-9d97-4c23-975b-733a8bcc16ea",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "invoice_text",
+              "value": "={{ $json.markdown_full }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "extraction_method",
+              "value": "llamaparse_ocr",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "OCR Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2400,
+        64
+      ],
+      "id": "a1ffd110-5133-48d7-b695-cbb4befe60b4"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// French amounts (\"410,000\" TND = 410.0, \"1.190,500\") are turned into dot decimals before the LLM,\n// which otherwise reads a decimal comma as a thousands separator. English-format documents are left as is.\nlet text = String($json.invoice_text || '');\nconst english = /\\d,\\d{3}\\.\\d{2}(?!\\d)/.test(text);\nif (!english) {\n  text = text.replace(/\\b\\d{1,3}(?:\\.\\d{3})+,\\d{1,3}(?!\\d)/g, (m) => m.replace(/\\./g, ''));\n  // Drop trailing zeros beyond 2 decimals so \"1,000\" becomes \"1.00\", never the ambiguous \"1.000\"\n  text = text.replace(/(\\d),(\\d{1,3})(?!\\d)/g, (m, i, d) => `${i}.${d.length > 2 ? d.replace(/0+$/, '').padEnd(2, '0') : d}`);\n}\nreturn { json: { ...$json, invoice_text: text, number_format: english ? 'en' : 'fr' } };"
+      },
+      "name": "Normalize Numbers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        -32
+      ],
+      "id": "e369c6e7-1bc8-4af5-92f8-53792267bddf"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Long invoices are split into parts cut between rows, one LLM call per part: short outputs mean\n// no dropped lines and no timeouts. \"Merge Chunks\" puts the parts back together.\nconst MAX_CHARS = 1500;\nconst src = $input.first().json;\nconst lines = String(src.invoice_text || '').split('\\n');\nconst insideRow = /^\\s*(<\\/?(td|th)\\b|<\\/tr>)/i; // never cut inside an HTML table row (OCR markdown)\nconst chunks = [];\nlet current = [];\nfor (const line of lines) {\n  if (current.length && !insideRow.test(line) && current.join('\\n').length + line.length > MAX_CHARS) {\n    chunks.push(current.join('\\n'));\n    current = [];\n  }\n  current.push(line);\n}\nif (current.length) chunks.push(current.join('\\n'));\nreturn chunks.map((text, i) => ({\n  json: {\n    ...src,\n    chunk_index: i,\n    chunk_count: chunks.length,\n    invoice_text: chunks.length > 1 ? `[Part ${i + 1} of ${chunks.length} of the same invoice]\\n${text}` : text,\n  },\n  pairedItem: { item: 0 },\n}));"
+      },
+      "name": "Split Into Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2848,
+        -32
+      ],
+      "id": "a312c2c6-3e2c-42ec-a24d-573c475d2f4d"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.invoice_text }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"is_invoice\": {\n      \"type\": \"boolean\",\n      \"description\": \"false if the document is not a repair invoice (letter, quote, report...)\"\n    },\n    \"invoice_number\": {\n      \"type\": \"string\"\n    },\n    \"garage_name\": {\n      \"type\": \"string\"\n    },\n    \"invoice_date\": {\n      \"type\": \"string\",\n      \"description\": \"ISO date YYYY-MM-DD\"\n    },\n    \"vehicle_plate\": {\n      \"type\": \"string\"\n    },\n    \"claim_ref\": {\n      \"type\": \"string\"\n    },\n    \"currency\": {\n      \"type\": \"string\"\n    },\n    \"prices_include_tax\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if line prices and amounts are tax-inclusive (TTC)\"\n    },\n    \"line_items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"description\": {\n            \"type\": \"string\"\n          },\n          \"category\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"part\",\n              \"labor\",\n              \"paint\",\n              \"consumable\",\n              \"other\"\n            ]\n          },\n          \"quantity\": {\n            \"type\": \"number\"\n          },\n          \"unit_price\": {\n            \"type\": \"number\"\n          },\n          \"discount_percent\": {\n            \"type\": \"number\",\n            \"description\": \"Line discount in %, if printed\"\n          },\n          \"discount_amount\": {\n            \"type\": \"number\",\n            \"description\": \"Line discount amount, if printed\"\n          },\n          \"vat_rate\": {\n            \"type\": \"number\",\n            \"description\": \"VAT rate in % for this line, if printed\"\n          },\n          \"line_total\": {\n            \"type\": \"number\",\n            \"description\": \"Line amount exactly as printed\"\n          }\n        },\n        \"required\": [\n          \"description\",\n          \"line_total\"\n        ]\n      }\n    },\n    \"labor\": {\n      \"type\": \"object\",\n      \"description\": \"Only if labor is printed OUTSIDE the line items table\",\n      \"properties\": {\n        \"hours\": {\n          \"type\": \"number\"\n        },\n        \"rate\": {\n          \"type\": \"number\"\n        },\n        \"total\": {\n          \"type\": \"number\"\n        }\n      }\n    },\n    \"subtotal\": {\n      \"type\": \"number\",\n      \"description\": \"Sum of lines before global discount and tax (Sous-total, Total brut)\"\n    },\n    \"discount_total\": {\n      \"type\": \"number\",\n      \"description\": \"Global discount amount (positive), if printed\"\n    },\n    \"net_before_tax\": {\n      \"type\": \"number\",\n      \"description\": \"Amount before tax after discounts (Total HT, Net HT line), if printed. Never a per-rate tax base\"\n    },\n    \"vat_rate\": {\n      \"type\": \"number\",\n      \"description\": \"VAT rate in %, if a single rate is used\"\n    },\n    \"vat\": {\n      \"type\": \"number\",\n      \"description\": \"VAT amount, if a single rate is used\"\n    },\n    \"tax_lines\": {\n      \"type\": \"array\",\n      \"description\": \"One entry per tax rate when several rates are printed\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"label\": {\n            \"type\": \"string\"\n          },\n          \"rate\": {\n            \"type\": \"number\"\n          },\n          \"base\": {\n            \"type\": \"number\"\n          },\n          \"amount\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"other_charges\": {\n      \"type\": \"array\",\n      \"description\": \"Charges added on top (timbre fiscal / stamp duty, fees, towing...)\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"label\": {\n            \"type\": \"string\"\n          },\n          \"amount\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"Grand total to pay (Total TTC, Net a payer), as printed\"\n    }\n  },\n  \"required\": [\n    \"is_invoice\"\n  ]\n}",
+        "options": {
+          "systemPromptTemplate": "You extract data from documents submitted as vehicle repair invoices for an insurance claims system.\nRules:\n- Copy every number EXACTLY as printed, even if it looks wrong. Never recompute, fix or infer amounts: a separate step checks the arithmetic.\n- Amounts are already normalized to a dot decimal separator (\"1 190.500\" means 1190.5); spaces inside a number are thousands separators only within the same table cell. Output plain JSON numbers.\n- If a value is not printed, omit the field. Never invent a quantity or unit price.\n- If labor appears as a row of the items table, keep it as a line item with category \"labor\" and do not fill the labor object.\n- Put stamp duty (timbre fiscal) and other fees added after tax in other_charges, not in line_items.\n- Set is_invoice to false if the document is not an invoice (letter, quote/devis, report, form).\n- The text may be one part of a longer invoice: extract only what is printed in that part, and omit header or total fields that are not in it."
+        }
+      },
+      "name": "Information Extractor",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        3088,
+        -32
+      ],
+      "id": "31416a32-61cc-4761-9ec1-4e2dc53c10cf",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "openai/gpt-oss-20b",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0,
+          "timeout": 120000,
+          "maxRetries": 1
+        }
+      },
+      "name": "NVIDIA Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3088,
+        176
+      ],
+      "id": "89cdae9f-832d-4380-a002-3719c50823a4",
+      "credentials": {
+        "openAiApi": {
+          "id": "xO0MBTk3vOkjcldJ",
+          "name": "nvidia-omar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "text": "={{ $('Split Into Chunks').item.json.invoice_text }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"is_invoice\": {\n      \"type\": \"boolean\",\n      \"description\": \"false if the document is not a repair invoice (letter, quote, report...)\"\n    },\n    \"invoice_number\": {\n      \"type\": \"string\"\n    },\n    \"garage_name\": {\n      \"type\": \"string\"\n    },\n    \"invoice_date\": {\n      \"type\": \"string\",\n      \"description\": \"ISO date YYYY-MM-DD\"\n    },\n    \"vehicle_plate\": {\n      \"type\": \"string\"\n    },\n    \"claim_ref\": {\n      \"type\": \"string\"\n    },\n    \"currency\": {\n      \"type\": \"string\"\n    },\n    \"prices_include_tax\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if line prices and amounts are tax-inclusive (TTC)\"\n    },\n    \"line_items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"description\": {\n            \"type\": \"string\"\n          },\n          \"category\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"part\",\n              \"labor\",\n              \"paint\",\n              \"consumable\",\n              \"other\"\n            ]\n          },\n          \"quantity\": {\n            \"type\": \"number\"\n          },\n          \"unit_price\": {\n            \"type\": \"number\"\n          },\n          \"discount_percent\": {\n            \"type\": \"number\",\n            \"description\": \"Line discount in %, if printed\"\n          },\n          \"discount_amount\": {\n            \"type\": \"number\",\n            \"description\": \"Line discount amount, if printed\"\n          },\n          \"vat_rate\": {\n            \"type\": \"number\",\n            \"description\": \"VAT rate in % for this line, if printed\"\n          },\n          \"line_total\": {\n            \"type\": \"number\",\n            \"description\": \"Line amount exactly as printed\"\n          }\n        },\n        \"required\": [\n          \"description\",\n          \"line_total\"\n        ]\n      }\n    },\n    \"labor\": {\n      \"type\": \"object\",\n      \"description\": \"Only if labor is printed OUTSIDE the line items table\",\n      \"properties\": {\n        \"hours\": {\n          \"type\": \"number\"\n        },\n        \"rate\": {\n          \"type\": \"number\"\n        },\n        \"total\": {\n          \"type\": \"number\"\n        }\n      }\n    },\n    \"subtotal\": {\n      \"type\": \"number\",\n      \"description\": \"Sum of lines before global discount and tax (Sous-total, Total brut)\"\n    },\n    \"discount_total\": {\n      \"type\": \"number\",\n      \"description\": \"Global discount amount (positive), if printed\"\n    },\n    \"net_before_tax\": {\n      \"type\": \"number\",\n      \"description\": \"Amount before tax after discounts (Total HT, Net HT line), if printed. Never a per-rate tax base\"\n    },\n    \"vat_rate\": {\n      \"type\": \"number\",\n      \"description\": \"VAT rate in %, if a single rate is used\"\n    },\n    \"vat\": {\n      \"type\": \"number\",\n      \"description\": \"VAT amount, if a single rate is used\"\n    },\n    \"tax_lines\": {\n      \"type\": \"array\",\n      \"description\": \"One entry per tax rate when several rates are printed\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"label\": {\n            \"type\": \"string\"\n          },\n          \"rate\": {\n            \"type\": \"number\"\n          },\n          \"base\": {\n            \"type\": \"number\"\n          },\n          \"amount\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"other_charges\": {\n      \"type\": \"array\",\n      \"description\": \"Charges added on top (timbre fiscal / stamp duty, fees, towing...)\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"label\": {\n            \"type\": \"string\"\n          },\n          \"amount\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"Grand total to pay (Total TTC, Net a payer), as printed\"\n    }\n  },\n  \"required\": [\n    \"is_invoice\"\n  ]\n}",
+        "options": {
+          "systemPromptTemplate": "You extract data from documents submitted as vehicle repair invoices for an insurance claims system.\nRules:\n- Copy every number EXACTLY as printed, even if it looks wrong. Never recompute, fix or infer amounts: a separate step checks the arithmetic.\n- Amounts are already normalized to a dot decimal separator (\"1 190.500\" means 1190.5); spaces inside a number are thousands separators only within the same table cell. Output plain JSON numbers.\n- If a value is not printed, omit the field. Never invent a quantity or unit price.\n- If labor appears as a row of the items table, keep it as a line item with category \"labor\" and do not fill the labor object.\n- Put stamp duty (timbre fiscal) and other fees added after tax in other_charges, not in line_items.\n- Set is_invoice to false if the document is not an invoice (letter, quote/devis, report, form).\n- The text may be one part of a longer invoice: extract only what is printed in that part, and omit header or total fields that are not in it."
+        }
+      },
+      "name": "Fallback Extractor",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        3344,
+        160
+      ],
+      "id": "69542e1e-0a98-41a2-b539-efeebc1d9746",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "nvidia/nemotron-3-super-120b-a12b",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0,
+          "timeout": 60000,
+          "maxRetries": 2
+        }
+      },
+      "name": "Fallback Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3344,
+        384
+      ],
+      "id": "b568fb14-72e9-4cf0-b01a-91a73ac9c64c",
+      "credentials": {
+        "openAiApi": {
+          "id": "xO0MBTk3vOkjcldJ",
+          "name": "nvidia-omar"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "name": "Collect Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3584,
+        -32
+      ],
+      "id": "f18931fa-6d90-420b-bf45-5ba37e1afaad"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rebuild one invoice from the per-part extractions (primary or fallback LLM), in part order.\n// Header fields come from the first part that has them, totals from the last one.\nconst failed = $input.all().find((item) => item.json.error);\nif (failed) {\n  const reason = `LLM extraction failed on primary and fallback models: ${failed.json.error?.message ?? failed.json.error}`;\n  return [{ json: { error: reason } }];\n}\nconst parts = $input.all().map((item, i) => {\n  let index = i;\n  try { index = $('Split Into Chunks').itemMatching(i).json.chunk_index; } catch (e) {}\n  return { index, out: item.json.output || {} };\n}).sort((a, b) => a.index - b.index).map((p) => p.out);\n\nconst HEADER = ['invoice_number', 'garage_name', 'invoice_date', 'vehicle_plate', 'claim_ref', 'currency',\n  'prices_include_tax', 'labor'];\nconst TOTALS = ['subtotal', 'discount_total', 'net_before_tax', 'vat_rate', 'vat', 'tax_lines', 'other_charges', 'total'];\nconst present = (v) => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);\n\nconst invoice = { is_invoice: parts.some((p) => p.is_invoice !== false) };\nfor (const k of HEADER) { const p = parts.find((x) => present(x[k])); if (p) invoice[k] = p[k]; }\ninvoice.line_items = parts.flatMap((p) => p.line_items || []);\nfor (const k of TOTALS) { const p = [...parts].reverse().find((x) => present(x[k])); if (p) invoice[k] = p[k]; }\n\nreturn [{\n  json: {\n    output: invoice,\n    chunks: parts.length,\n    llm_fallback_used: $('Fallback Extractor').isExecuted,\n  },\n}];"
+      },
+      "name": "Merge Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3808,
+        -32
+      ],
+      "id": "5d6281dc-7660-46b5-9275-951beeea57c7"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Any failure before extraction (missing file, OCR) ends here: the orchestrator gets { error: true }\n// and sends the claim to human review instead of the whole run crashing.\nconst first = $input.first().json;\nconst reason = String(first.error?.message ?? first.error ?? first.message ?? 'Unknown error');\nlet sourceFile = null;\ntry { sourceFile = $('Invoice Input').first().json.file_path; } catch (e) {}\nreturn [{\n  json: {\n    agent: 'invoice_parser', error: true, reason, summary: `The invoice could not be read: ${reason}`, source_file: sourceFile,\n    status: 'error', totals_match: null, arithmetic_issue: null, line_items: [], claimed_parts: [],\n  },\n}];"
+      },
+      "name": "Error Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        1120
+      ],
+      "id": "67bae0cd-c833-489d-9901-59ccc4abbf14"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Deterministic arithmetic check on the extracted invoice.\n// status: ok | arithmetic_mismatch (+15 risk points) | needs_review (not an invoice, incomplete or\n// amounts not found on the invoice, 0 points)\nif ($json.error) {\n  return {\n    json: {\n      agent: 'invoice_parser', error: true, reason: String($json.error),\n      source_file: $('Invoice Input').first().json.file_path,\n      status: 'error', totals_match: null, arithmetic_issue: null, line_items: [], claimed_parts: [],\n    },\n  };\n}\nconst inv = $json.output || {};\nconst num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);\nconst round = (n) => Math.round(n * 1000) / 1000;\nconst close = (a, b) => Math.abs(a - b) <= Math.max(0.05, Math.abs(b) * 0.001);\nconst pct = (r) => (r > 1 ? r / 100 : r);\nconst total = (arr) => round(arr.reduce((s, x) => s + x, 0));\n\nconst issues = [];\nconst reviewReasons = [];\nconst uncheckedLines = [];\nconst items = inv.line_items || [];\n\n// 0. Grounding: every amount the LLM returns must be printed in the invoice text. An amount that is not\n// (recomputed, \"fixed\" or invented by the LLM) is not trusted: the checks that depend on it are skipped,\n// so arithmetic_issue only quotes numbers that are really printed on the invoice.\nconst source = $('Normalize Numbers').first().json;\nconst printedValues = [];\nfor (const token of String(source.invoice_text || '').match(/\\d[\\d \\u00a0\\u202f,]*(?:\\.\\d+)?/g) || []) {\n  const parts = (source.number_format === 'en' ? token.replace(/,/g, '') : token)\n    .split(/[ \\u00a0\\u202f,]+/).filter(Boolean).slice(0, 8);\n  // \"1 043.20\" may be one amount or two columns: keep every contiguous grouping\n  for (let i = 0; i < parts.length; i++) {\n    for (let j = i + 1; j <= parts.length; j++) printedValues.push(parseFloat(parts.slice(i, j).join('')));\n  }\n}\nconst ungrounded = [];\nconst UNTRUSTED = 'untrusted';\nconst ok = (x) => typeof x === 'number';\nconst g = (v, field) => {\n  const n = num(v);\n  if (n == null) return null;\n  if (printedValues.some((p) => Math.abs(p - Math.abs(n)) < 0.006)) return n;\n  ungrounded.push({ field, value: n });\n  return UNTRUSTED;\n};\n\nif (inv.is_invoice === false) reviewReasons.push('not_an_invoice');\nif (!items.length) reviewReasons.push('no_line_items');\n\n// 1. Each line: quantity x unit price, minus its discount\nlet linesTrusted = true;\nconst lineTotals = [];\nfor (const li of items) {\n  const printed = g(li.line_total, `line_total \"${li.description}\"`);\n  if (printed === null) { reviewReasons.push(`line_without_amount: ${li.description}`); linesTrusted = false; continue; }\n  if (printed === UNTRUSTED) { linesTrusted = false; continue; }\n  lineTotals.push(printed);\n  const qty = num(li.quantity);\n  const price = g(li.unit_price, `unit_price \"${li.description}\"`);\n  if (qty == null || !ok(price)) { uncheckedLines.push(li.description); continue; }\n  const gross = qty * price;\n  const candidates = [gross - (num(li.discount_amount) ?? 0)];\n  if (num(li.discount_percent) != null) candidates.push(gross * (1 - pct(li.discount_percent)));\n  if (!candidates.some((c) => close(c, printed))) {\n    issues.push({ type: 'line_total_mismatch', item: li.description, printed, expected: round(candidates.at(-1)) });\n  }\n}\n\n// 2. Labor printed outside the table (ignored if the same amount is also a \"labor\" line)\nconst hasLaborLine = items.some((li) => li.category === 'labor');\nconst laborRaw = g(inv.labor?.total, 'labor.total');\nlet laborTotal = ok(laborRaw) ? laborRaw : 0;\nif (laborRaw === UNTRUSTED && !hasLaborLine) linesTrusted = false;\nconst laborRate = g(inv.labor?.rate, 'labor.rate');\nif (ok(laborRaw) && ok(laborRate) && num(inv.labor?.hours) != null && !close(inv.labor.hours * laborRate, laborRaw)) {\n  issues.push({ type: 'labor_mismatch', printed: laborRaw, expected: round(inv.labor.hours * laborRate) });\n}\nif (items.some((li) => li.category === 'labor' && close(num(li.line_total) ?? 0, laborTotal))) laborTotal = 0;\n\n// 3. Subtotal, discount, net before tax\nconst linesSum = linesTrusted ? total([...lineTotals, laborTotal]) : null;\nconst discountRaw = g(inv.discount_total, 'discount_total');\nconst discount = ok(discountRaw) ? discountRaw : 0;\nconst discountKnown = discountRaw !== UNTRUSTED;\nlet base = linesSum != null && discountKnown ? linesSum - discount : null;\nconst subtotal = g(inv.subtotal, 'subtotal');\nif (ok(subtotal)) {\n  if (linesSum != null && close(subtotal, linesSum)) base = discountKnown ? subtotal - discount : null;\n  else if (linesSum != null && discount && close(subtotal, linesSum - discount)) base = subtotal;\n  else {\n    if (linesSum != null) issues.push({ type: 'subtotal_mismatch', printed: subtotal, expected: linesSum });\n    base = discountKnown ? subtotal - discount : null;\n  }\n}\nconst net = g(inv.net_before_tax, 'net_before_tax');\nif (ok(net)) {\n  if (base != null && !close(net, base)) issues.push({ type: 'net_before_tax_mismatch', printed: net, expected: round(base) });\n  base = net;\n}\n\n// 4. Taxes (one rate or several); with tax-inclusive prices the tax is informative only\nconst taxLines = (inv.tax_lines || []).map((t) => ({\n  label: t.label, rate: num(t.rate), base: g(t.base, `tax base \"${t.label}\"`), amount: g(t.amount, `tax \"${t.label}\"`),\n}));\n// The tax may be computed on a tax-exclusive base (base x rate) or contained in a tax-inclusive one\n// (\"dont TVA\": base - base / (1 + rate)).\nconst taxFits = (b, r, amount) => close(b * pct(r), amount) || close(b - b / (1 + pct(r)), amount);\nfor (const t of taxLines) {\n  if (t.rate != null && ok(t.base) && ok(t.amount) && !taxFits(t.base, t.rate, t.amount)) {\n    issues.push({ type: 'tax_line_mismatch', label: t.label, printed: t.amount, expected: round(t.base * pct(t.rate)) });\n  }\n}\nconst vat = g(inv.vat, 'vat');\nif (!inv.prices_include_tax && base != null) {\n  if (taxLines.length && taxLines.every((t) => ok(t.base)) && !close(total(taxLines.map((t) => t.base)), base)) {\n    issues.push({ type: 'tax_base_mismatch', printed: total(taxLines.map((t) => t.base)), expected: round(base) });\n  }\n  if (!taxLines.length && ok(vat) && num(inv.vat_rate) != null && !close(base * pct(inv.vat_rate), vat)) {\n    issues.push({ type: 'vat_mismatch', printed: vat, expected: round(base * pct(inv.vat_rate)) });\n  }\n}\nconst tax = taxLines.length\n  ? (taxLines.every((t) => ok(t.amount)) ? total(taxLines.map((t) => t.amount)) : null)\n  : (vat === UNTRUSTED ? null : vat ?? 0);\n\n// 5. Grand total = net + tax + other charges (timbre fiscal...). Both the tax-exclusive and the\n// tax-inclusive readings are accepted, so a wrong prices_include_tax flag from the LLM is not a fraud signal.\nconst chargeValues = (inv.other_charges || []).map((c) => g(c.amount, `charge \"${c.label}\"`));\nconst charges = chargeValues.includes(UNTRUSTED) ? null : total(chargeValues.filter(ok));\nconst grandTotal = g(inv.total, 'total');\nif (grandTotal === null) reviewReasons.push('no_total');\nconst known = base != null && tax != null && charges != null;\nconst totals = known ? [round(base + tax + charges), round(base + charges)] : [];\nconst expectedTotal = known ? (inv.prices_include_tax ? totals[1] : totals[0]) : null;\nif (ok(grandTotal) && known && !totals.some((t) => close(t, grandTotal))) {\n  issues.push({ type: 'total_mismatch', printed: grandTotal, expected: expectedTotal });\n}\nif (ungrounded.length) reviewReasons.push('ungrounded_amounts');\n\n// Arithmetic evidence found on printed numbers wins; otherwise any doubt means human review, never fraud.\nconst notReadable = reviewReasons.some((r) => r === 'not_an_invoice' || r === 'no_line_items');\nconst status = notReadable ? 'needs_review'\n  : issues.length ? 'arithmetic_mismatch'\n  : reviewReasons.length ? 'needs_review' : 'ok';\n\n// Fields read by the Fraud Risk & Decision agent (team contract): totals_match, arithmetic_issue, line_items.\n// type \"other\" (paint, consumables...) must not count as a part expected to be visible on the photos.\nconst fmt = (n) => (num(n) == null ? '?' : n.toFixed(2));\nconst LABELS = {\n  line_total_mismatch: (i) => `Line \"${i.item}\"`, labor_mismatch: () => 'Labor', subtotal_mismatch: () => 'Subtotal',\n  net_before_tax_mismatch: () => 'Total before tax', tax_line_mismatch: (i) => `Tax \"${i.label}\"`,\n  tax_base_mismatch: () => 'Tax bases', vat_mismatch: () => 'VAT', total_mismatch: () => 'Grand total',\n};\nconst arithmeticIssue = issues.length\n  ? issues.map((i) => `${(LABELS[i.type] || (() => i.type))(i)}: printed ${fmt(i.printed)}, expected ${fmt(i.expected)}`).join('; ')\n  : null;\nconst TYPES = { part: 'part', labor: 'labor' };\nconst lineItems = items.map((li) => ({\n  part: li.description,\n  type: li.category ? TYPES[li.category] || 'other' : 'part',\n  quantity: num(li.quantity),\n  unit_price: num(li.unit_price),\n  line_total: num(li.line_total),\n}));\nif (laborTotal) {\n  lineItems.push({ part: 'Labor', type: 'labor', quantity: num(inv.labor.hours), unit_price: num(inv.labor.rate), line_total: laborTotal });\n}\n\n// Summary of the invoice for the decision agent and the messages: the important information in one paragraph.\nconst partsList = lineItems.filter((li) => li.type === 'part').map((li) => li.part);\nconst laborLine = lineItems.filter((li) => li.type === 'labor').reduce((s, li) => s + (num(li.line_total) ?? 0), 0);\nconst cur = inv.currency || 'TND';\nconst amount = (n) => (num(n) == null ? '?' : `${n.toFixed(2)} ${cur}`);\nconst key_info = {\n  invoice_number: inv.invoice_number || null, garage_name: inv.garage_name || null, invoice_date: inv.invoice_date || null,\n  vehicle_plate: inv.vehicle_plate || null, currency: cur, parts: partsList, labor_total: laborLine || null,\n  total_before_tax: num(inv.net_before_tax) ?? num(inv.subtotal), tax: tax ?? null, total: num(inv.total),\n};\nconst summary = [\n  `Invoice ${key_info.invoice_number || '(no number)'} from ${key_info.garage_name || 'an unnamed garage'}${key_info.invoice_date ? ` dated ${key_info.invoice_date}` : ''}${key_info.vehicle_plate ? `, vehicle ${key_info.vehicle_plate}` : ''}.`,\n  partsList.length ? `${partsList.length} part(s): ${partsList.join(', ')}.` : 'No parts listed.',\n  laborLine ? `Labor: ${amount(laborLine)}.` : '',\n  `Total: ${amount(num(inv.total))}.`,\n  status === 'ok' ? 'The amounts add up.'\n    : status === 'arithmetic_mismatch' ? `The amounts do NOT add up: ${arithmeticIssue}.`\n    : `Some amounts could not be checked (${reviewReasons.join(', ')}).`,\n].filter(Boolean).join(' ');\n\nreturn {\n  json: {\n    agent: 'invoice_parser',\n    error: false,\n    summary,\n    key_info,\n    totals_match: status === 'needs_review' ? null : issues.length === 0,\n    arithmetic_issue: arithmeticIssue,\n    line_items: lineItems,\n    status,\n    risk_points: status === 'arithmetic_mismatch' ? 15 : 0,\n    source_file: $('Invoice Input').first().json.file_path,\n    extraction_method: $('Native Text').isExecuted ? 'native_pdf_text' : 'llamaparse_ocr',\n    invoice: inv,\n    claimed_parts: lineItems.filter((li) => li.type === 'part').map((li) => li.part),\n    arithmetic_check: {\n      ok: issues.length === 0,\n      issues,\n      unchecked_lines: uncheckedLines,\n      computed_lines_sum: linesSum,\n      computed_total: expectedTotal,\n    },\n    review_reasons: reviewReasons,\n    ungrounded_amounts: ungrounded,\n    extraction: { chunks: $json.chunks, llm_fallback_used: $json.llm_fallback_used },\n  },\n};"
+      },
+      "name": "Arithmetic Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4032,
+        -32
+      ],
+      "id": "6d0309c1-7025-4615-8fca-8a09bb5dd66e"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Invoice Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Input": {
+      "main": [
+        [
+          {
+            "node": "Read Invoice File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Invoice File": {
+      "main": [
+        [
+          {
+            "node": "Check File Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check File Found": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Detect Text Layer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Text Layer": {
+      "main": [
+        [
+          {
+            "node": "Has Text Layer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Text Layer?": {
+      "main": [
+        [
+          {
+            "node": "Native Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "LlamaParse Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Native Text": {
+      "main": [
+        [
+          {
+            "node": "Normalize Numbers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LlamaParse Upload": {
+      "main": [
+        [
+          {
+            "node": "Wait 3s",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3s": {
+      "main": [
+        [
+          {
+            "node": "LlamaParse Job Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LlamaParse Job Status": {
+      "main": [
+        [
+          {
+            "node": "Check Job Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Job Status": {
+      "main": [
+        [
+          {
+            "node": "Job Done?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Done?": {
+      "main": [
+        [
+          {
+            "node": "LlamaParse Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 3s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LlamaParse Markdown": {
+      "main": [
+        [
+          {
+            "node": "OCR Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR Text": {
+      "main": [
+        [
+          {
+            "node": "Normalize Numbers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Numbers": {
+      "main": [
+        [
+          {
+            "node": "Split Into Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Chunks": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Collect Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Extractor": {
+      "main": [
+        [
+          {
+            "node": "Collect Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Collect Results": {
+      "main": [
+        [
+          {
+            "node": "Merge Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Chunks": {
+      "main": [
+        [
+          {
+            "node": "Arithmetic Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NVIDIA Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Fallback Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by the validation agent": {
+      "main": [
+        [
+          {
+            "node": "Invoice Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}

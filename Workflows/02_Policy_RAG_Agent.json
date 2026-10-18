@@ -1,0 +1,757 @@
+{
+  "id": "FwCOIOAfJsT7eTvB",
+  "name": "RAG Agent & LLM-as-a-Judge Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        224
+      ],
+      "id": "3e18717c-fe54-40a0-ba04-588e6d15976e",
+      "name": "When chat message received",
+      "webhookId": "e3ce4787-355b-4506-9310-35716f9c800c"
+    },
+    {
+      "parameters": {
+        "model": "=nvidia/nemotron-3-embed-1b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        452,
+        484
+      ],
+      "id": "07324bd0-4f1a-4fab-8385-9dbd58cae325",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "SPONP3X9OugaVEBi",
+          "name": "NVIDIA_NIM_Free"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "topN": 4
+      },
+      "type": "@n8n/n8n-nodes-langchain.rerankerCohere",
+      "typeVersion": 1,
+      "position": [
+        632,
+        484
+      ],
+      "id": "b1f5b8ce-d9e7-45c9-942e-3f9a3ff1ee65",
+      "name": "Reranker Cohere",
+      "credentials": {
+        "cohereApi": {
+          "id": "drsP1GycxoylXmzl",
+          "name": "Cohere account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a strict QA Compliance Evaluator for an Insurance RAG System.\n\nUSER QUERY:\n{{ $json.user_query }}\n\nAGENT RESPONSE TO EVALUATE:\n{{ $json.agent_output }}\n\nEVALUATION RULES:\n1. PASS CONDITION (\"pass\": true): The response MUST contain explicit insurance policy facts, numerical values, clause references, or specific terms (e.g., waiting periods, depreciation %, IMT codes, cover limits) retrieved from the database.\n2. FAIL CONDITION (\"pass\": false): If the response contains any fallback disclaimer (e.g., \"Information not found\", \"consult customer support\"), refusals, small talk, or general non-policy answers, it is INVALID (\"pass\": false).\n\nOutput ONLY one JSON object with the keys score, pass and reasoning:\n- If valid policy facts are present:\n  {\"score\": 5, \"pass\": true, \"reasoning\": \"Response contains verified policy clauses.\"}\n- If fallback text, refusal, or missing policy context:\n  {\"score\": 1, \"pass\": false, \"reasoning\": \"Response contains fallback disclaimer or lacks retrieved policy context.\"}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1816,
+        96
+      ],
+      "id": "c6eb9efd-4036-43ff-855d-6612d3753114",
+      "name": "LLM Chain Evaluator"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Extract incoming LLM evaluation output safely in 'Run Once for Each Item' mode\nconst inputJson = $json || {};\nconst rawText = inputJson.text || inputJson.output || inputJson.message?.content || (typeof inputJson === 'string' ? inputJson : JSON.stringify(inputJson));\n\nlet parsedEval = {};\n\ntry {\n  // Strip markdown code fences if present\n  const cleanedText = String(rawText).replace(/```json/g, '').replace(/```/g, '').trim();\n  parsedEval = JSON.parse(cleanedText);\n} catch (e) {\n  // Safe fallback if JSON parsing fails\n  parsedEval = {\n    score: 1,\n    pass: false,\n    reasoning: \"Failed to parse evaluator JSON response.\"\n  };\n}\n\nreturn {\n  score: Number(parsedEval.score) || 1,\n  pass: String(parsedEval.pass).toLowerCase() === 'true',\n  reasoning: parsedEval.reasoning || \"No reasoning provided.\"\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2168,
+        96
+      ],
+      "id": "e9023294-e86e-4353-bee5-2347600b7d66",
+      "name": "JSON Cleaner"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a101d3aa-134f-47f2-b128-31b9fec74b48",
+              "name": "output",
+              "value": "=={{ $('Payload Assembler').first().json.agent_output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2616,
+        0
+      ],
+      "id": "05b5ead0-af20-4495-9b94-f01c2a2d3d77",
+      "name": "Output Valid Response"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Original query from \"Initialize Retry Counter\", so this works for the chat window and the orchestrator\nconst userQuery = $('Initialize Retry Counter').first()?.json?.user_query || '';\n\n// Answer of the \"Policy Answer\" step (gemma2)\nconst agentOutput = $input.item?.json?.output || $input.item?.json?.text || '';\n\nreturn {\n  json: {\n    user_query: userQuery,\n    agent_output: agentOutput,\n    eval_timestamp: new Date().toISOString()\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1592,
+        96
+      ],
+      "id": "ecb93583-8fcb-4aab-93e6-1fbd89ba7121",
+      "name": "Payload Assembler"
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "policy_clauses",
+          "mode": "list",
+          "cachedResultName": "policy_clauses"
+        },
+        "prompt": "={{ $json.search_query || $json.current_query }}",
+        "topK": 20,
+        "includeDocumentMetadata": true,
+        "useReranker": true,
+        "options": {
+          "contentPayloadKey": "content",
+          "metadataPayloadKey": "metadata"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        512,
+        224
+      ],
+      "id": "943c2feb-0f3b-40f6-aaaa-5aa9f748cd5c",
+      "name": "Search Policy Clauses",
+      "credentials": {
+        "qdrantApi": {
+          "id": "DA9IF6z39EiJXHZ8",
+          "name": "Local_Qdrant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preserve original chat input and set initial retry count.\n// Works for the chat window and for the orchestrator (\"Claim To Question\").\nconst inputData = $input.first()?.json || {};\nconst chatInput = inputData.chatInput || inputData.query || '';\n\nreturn {\n  json: {\n    user_query: chatInput,\n    current_query: chatInput,\n    // What the vector database is searched with (policy terms work better than the full question).\n    search_query: inputData.search_query || chatInput,\n    retry_count: 0,\n    session_id: inputData.sessionId || 'default',\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        224
+      ],
+      "id": "5438f4eb-7036-4c7b-bc0d-f40836f2e061",
+      "name": "Initialize Retry Counter"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b40023dc-4f05-4356-aad3-4a8034085ce3",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 4,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2392,
+        96
+      ],
+      "id": "a62ca266-db51-4d62-9e27-a827d6135e9e",
+      "name": "Gatekeeper Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c3d8b340-d7e5-410d-b6c0-72180d624041",
+              "leftValue": "={{ $('Increment Retry Count').isExecuted ? $('Increment Retry Count').last().json.retry_count : $('Initialize Retry Counter').first().json.retry_count }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2616,
+        192
+      ],
+      "id": "f56de23a-edfb-446b-8b6f-d371e76f691a",
+      "name": "Check Retry Limit"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1b5cd4b-a97b-4efb-8507-3a47b207d58e",
+              "name": "output",
+              "value": "This policy response requires secondary manual verification.",
+              "type": "string"
+            },
+            {
+              "id": "2d7ace04-dc18-47e6-875a-d96a2ff67065",
+              "name": "status",
+              "value": "FAILED_QUALITY_CHECK",
+              "type": "string"
+            },
+            {
+              "id": "353e3c97-9acd-4e6a-a078-878721e2a4fb",
+              "name": "failure_reason",
+              "value": "={{ $json.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "c6578128-283c-40b8-bb7c-c621d27f5875",
+              "name": "eval_score",
+              "value": "={{ $json.score }}",
+              "type": "number"
+            },
+            {
+              "id": "21954223-81ee-4b6a-9aa6-c1460bf37403",
+              "name": "rejected_agent_output",
+              "value": "={{ $json.agent_output }}",
+              "type": "string"
+            },
+            {
+              "id": "fe421d3e-d343-4fc0-bf29-ccb84ff6e9dc",
+              "name": "user_query",
+              "value": "={{ $json.user_query }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2904,
+        48
+      ],
+      "id": "db97b39c-66f8-469f-a8c1-aa7e6bf1bfdb",
+      "name": "Fallback Disclaimer"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert Insurance Query Optimizer for a RAG retrieval system.\n\nThe previous vector search failed to retrieve the necessary policy clauses for the following inquiry.\n\nORIGINAL USER QUERY:\n{{ $('Initialize Retry Counter').first().json.user_query }}\n\nFAILED ANSWER PRODUCED:\n{{ $('Payload Assembler').first().json.agent_output }}\n\nEVALUATOR REASONING FOR FAILURE:\n{{ $json.reasoning }}\n\nTASK:\nAnalyze the evaluator feedback and generate a refined, highly specific technical query (3 to 6 keywords) for the vector database.\n- Use explicit policy terminology, clause references, or codes (e.g., \"IMT 22 compulsory deductible\", \"AD-17 charger protection\", \"Poorna Suraksha waiting period\").\n- Do NOT output explanations or conversational text.\n- Output ONLY the refined raw search query string.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2840,
+        336
+      ],
+      "id": "aacce080-33cc-4deb-bfdc-3c67cc424db4",
+      "name": "Query Reformulator"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Incoming item from Query Reformulator\nconst inputJson = $input.first()?.json || {};\nconst newQuery = inputJson.text || inputJson.output || '';\n\n// Safely pull state from upstream evaluation nodes\nconst payloadData = $('Payload Assembler').first()?.json || {};\nconst evalData = $('LLM Chain Evaluator').first()?.json || {};\n\nconst userQuery = payloadData.user_query || '';\nconst currentRetries = payloadData.retry_count || 0;\n\nreturn {\n  json: {\n    user_query: userQuery,\n    // Keep the original question: the retry only adds better search terms, so the agent never loses the claim\n    current_query: newQuery ? `${userQuery}\\n\\nSearch hint: use these terms in hdfc_policy_search: ${newQuery.trim()}` : userQuery,\n    // The reformulated terms become the new vector search.\n    search_query: newQuery ? newQuery.trim() : userQuery,\n    retry_count: currentRetries + 1,\n    last_reasoning: evalData.reasoning || ''\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3192,
+        336
+      ],
+      "id": "0f98b239-a895-4a82-8b9c-d0cde62a99f9",
+      "name": "Increment Retry Count"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3416,
+        464
+      ],
+      "id": "5a538179-dacb-43f0-b0f5-f8f78df645a8",
+      "name": "Wait",
+      "webhookId": "807c07a5-ecc4-41c6-8cfe-68f43a86d631"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        448
+      ],
+      "id": "0c3e07a7-3407-4b5d-87a8-637634c5d1a3",
+      "name": "When called by the validation agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the accident description sent by the validation agent into a question for the policy agent.\n// The answer must start with COVERED, EXCLUDED or REQUIRES_REVIEW so \"Coverage Result\" can read it;\n// the explanation after it is what the client receives about his policy.\nconst c = $input.first().json.claim ?? $input.first().json;\nconst question = [\n  'Motor insurance claim under the Liberty Private Car Package Policy.',\n  c.claim_type && !/not specified/.test(c.claim_type) ? `Type of damage: ${c.claim_type}.` : '',\n  c.incident_date ? `Date of the accident: ${c.incident_date}${c.incident_time ? ` at ${c.incident_time}` : ''}.` : '',\n  `What happened, in the policyholder's words: ${String(c.description || '').slice(0, 1500)}`,\n  'Is this damage covered by the policy? Search the policy first.',\n  'Start your answer with exactly one of these words: COVERED, EXCLUDED or REQUIRES_REVIEW.',\n  'Then, in three to five sentences addressed to the policyholder, explain what the policy says about this case:',\n  'what is covered, the conditions that apply and any exclusion that could apply.',\n  'Cite the section, IMT or AD codes you relied on.',\n].filter(Boolean).join('\\n');\n// Policy terms plus the story: this is what the vector database is searched with.\nconst search_query = `Section I own damage accidental collision cover, exclusions, compulsory deductible IMT 22, depreciation. ${String(c.description || '').slice(0, 300)}`;\nreturn [{ json: { chatInput: question, search_query, sessionId: `claim-${c.claim_id || Date.now()}`, claim_id: c.claim_id } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        640
+      ],
+      "id": "32c91b01-71e3-4b8d-ae89-6f0eebe2a565",
+      "name": "Claim To Question"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Adds the fields the Fraud Risk & Decision agent reads (coverage_status, cited_clauses, reasoning).\n// \"output\" is kept, so the chat window still shows the answer.\nconst r = $input.first().json;\nconst failedCheck = r.status === 'FAILED_QUALITY_CHECK';\nconst answer = String((failedCheck ? r.rejected_agent_output : r.output) ?? '').replace(/^=+/, '').trim();\n\nlet coverage_status = 'REQUIRES_REVIEW';\nif (!failedCheck) {\n  const head = answer.toUpperCase().replace(/NOT\\s+COVERED/g, 'EXCLUDED');\n  const m = /\\b(REQUIRES_REVIEW|EXCLUDED|COVERED)\\b/.exec(head);\n  if (m) coverage_status = m[1];\n}\n\nconst clauseRe = /\\b(?:Section|Clause|Part|Annexure|Exclusion|Article)\\s+[A-Z0-9][\\w.()-]*|\\bIMT[\\s-]?\\d+\\b|\\bAD-\\d+\\b/gi;\nconst cited_clauses = [...new Set(answer.match(clauseRe) || [])];\n\nreturn [{\n  json: {\n    ...r,\n    agent: 'policy_rag',\n    coverage_status,\n    cited_clauses,\n    reasoning: failedCheck\n      ? `Answer failed the quality check (${r.failure_reason || 'no reason'}); coverage needs a human check.`\n      : answer.slice(0, 1500),\n    eval_score: r.eval_score ?? $('JSON Cleaner').first()?.json?.score ?? null,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3220,
+        0
+      ],
+      "id": "f1b03c5e-7fe3-42dd-a805-73d06ff6568a",
+      "name": "Coverage Result"
+    },
+    {
+      "parameters": {
+        "content": "## Called by the validation agent (04)\n**When called by the validation agent** receives the accident description, **Claim To Question** turns it into a coverage question, and **Coverage Result** (last node) returns `coverage_status` (COVERED / EXCLUDED / REQUIRES_REVIEW), `cited_clauses` and `reasoning`: the explanation of what the policy says for this case, sent to the client.\nThe chat window still works as before.\n\n**Local model:** every LLM step uses **gemma2:latest** in Ollama on this computer (credential \"Ollama (local)\", http://host.docker.internal:11434), so there is no rate limit. gemma2 cannot call tools, so **Search Policy Clauses** searches Qdrant first and **Policy Answer** writes one answer from the clauses found. Ollama must be running.",
+        "height": 420,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        440
+      ],
+      "id": "14d06863-41c0-4d33-a703-2633f2a8497e",
+      "name": "Orchestrator note"
+    },
+    {
+      "parameters": {
+        "model": "gemma2:latest",
+        "options": {
+          "temperature": 0,
+          "format": "json",
+          "numPredict": 150,
+          "numCtx": 4096
+        }
+      },
+      "id": "3b34cfbf-ae86-4f1d-a718-d8631799742e",
+      "name": "gemma2 (judge)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1896,
+        336
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "OllamaLocal0001a",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gemma2:latest",
+        "options": {
+          "temperature": 0.2,
+          "numPredict": 40,
+          "numCtx": 4096
+        }
+      },
+      "id": "d2d67bde-9440-490f-a458-5ee37030faa4",
+      "name": "gemma2 (search terms)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2920,
+        576
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "OllamaLocal0001a",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gemma2:latest",
+        "options": {
+          "temperature": 0.1,
+          "numPredict": 450,
+          "numCtx": 6144
+        }
+      },
+      "id": "9fdb0f98-97bd-429e-9738-4950530e81a4",
+      "name": "gemma2 (answer)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1012,
+        444
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "OllamaLocal0001a",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Puts the clauses found in the vector database into one prompt for the local model (gemma2).\n// gemma2 cannot call tools, so the search runs first (\"Search Policy Clauses\") and the model\n// only reads what was found: one question in, one answer out.\nconst state = $('Increment Retry Count').isExecuted\n  ? $('Increment Retry Count').last().json\n  : $('Initialize Retry Counter').first().json;\n\nconst clauses = $input.all()\n  .map((i) => i.json.document || i.json)\n  .map((d) => String(d.pageContent || d.content || '').replace(/\\s+/g, ' ').trim())\n  .filter(Boolean)\n  .slice(0, 4)\n  .map((text, k) => `[Clause ${k + 1}] ${text.slice(0, 1200)}`);\n\nconst RULES = `You are the Policy Coverage Agent of ClaimShield AI. You answer from two policies only: the Liberty Private Car Package Policy (motor) and HDFC Life Poorna Suraksha (life, critical illness). Your only source is the POLICY CLAUSES below.\n\nONE SHOT: write one complete, final answer. The reader cannot reply.\n\nRULES\n1. Never ask a question. Never write \"please clarify\", \"could you\", \"can you confirm\", \"let me know\" or \"I need more details\". If a detail is missing, assume it, say so in a few words (\"Assuming ...\"), and answer.\n2. Default assumptions for car claims: own damage claim under Section I of the Package policy, authorised and licensed driver, private use, no alcohol. What the car hit does not matter.\n3. Use only the clauses below: every fact, number and code must appear in them. Copy numbers exactly. Cite the section, IMT, AD, Part or Clause as written (e.g. \"Section I\", \"IMT 22\").\n4. Car damage, repairs, towing and theft belong to the Liberty policy; death and critical illness to the HDFC Life policy.\n\nFORMAT\nA. If the question asks you to start with COVERED, EXCLUDED or REQUIRES_REVIEW:\n   Line 1: one word: COVERED (covered, no exclusion clearly applies), EXCLUDED (a clause below clearly excludes it) or REQUIRES_REVIEW (the clauses are not enough to decide).\n   Then 3 to 5 sentences to the policyholder (\"Your policy ...\"): what is covered, the conditions (deductible, depreciation, limits) and any exclusion to watch, with citations.\nB. Any other question: sentence 1 answers it, then up to 4 sentences of conditions and numbers with citations.\nPlain text only: no greeting, no headings, no bullet points, no question.\n\nNOTHING RELEVANT IN THE CLAUSES\nA. \"REQUIRES_REVIEW\" then \"The retrieved policy clauses do not state whether this damage is covered, so an adjuster must check the master policy.\"\nB. Exactly \"Information not found in the retrieved policy clauses. Please consult the master policy document or contact customer support.\"`;\n\nconst prompt = `${RULES}\n\nPOLICY CLAUSES\n${clauses.length ? clauses.join('\\n\\n') : '(no clause was found)'}\n\nQUESTION\n${state.user_query}\n\nANSWER`;\n\nreturn [{ json: { prompt, clauses_found: clauses.length, search_query: state.search_query } }];\n"
+      },
+      "id": "d02c6f56-afc6-4c6f-9bc5-ab41bd8f0172",
+      "name": "Policy Clauses",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        772,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "batching": {}
+      },
+      "id": "b922b52f-77e2-4f20-bf54-462930127c2f",
+      "name": "Policy Answer",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1012,
+        224
+      ]
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Initialize Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Search Policy Clauses",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reranker Cohere": {
+      "ai_reranker": [
+        [
+          {
+            "node": "Search Policy Clauses",
+            "type": "ai_reranker",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Chain Evaluator": {
+      "main": [
+        [
+          {
+            "node": "JSON Cleaner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSON Cleaner": {
+      "main": [
+        [
+          {
+            "node": "Gatekeeper Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload Assembler": {
+      "main": [
+        [
+          {
+            "node": "LLM Chain Evaluator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "Search Policy Clauses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatekeeper Check": {
+      "main": [
+        [
+          {
+            "node": "Output Valid Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Fallback Disclaimer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Reformulator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Reformulator": {
+      "main": [
+        [
+          {
+            "node": "Increment Retry Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Retry Count": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Search Policy Clauses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim To Question": {
+      "main": [
+        [
+          {
+            "node": "Initialize Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Valid Response": {
+      "main": [
+        [
+          {
+            "node": "Coverage Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Disclaimer": {
+      "main": [
+        [
+          {
+            "node": "Coverage Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by the validation agent": {
+      "main": [
+        [
+          {
+            "node": "Claim To Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Policy Clauses": {
+      "ai_tool": [
+        []
+      ],
+      "main": [
+        [
+          {
+            "node": "Policy Clauses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gemma2 (judge)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "LLM Chain Evaluator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gemma2 (search terms)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Query Reformulator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gemma2 (answer)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Policy Answer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Clauses": {
+      "main": [
+        [
+          {
+            "node": "Policy Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Answer": {
+      "main": [
+        [
+          {
+            "node": "Payload Assembler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}

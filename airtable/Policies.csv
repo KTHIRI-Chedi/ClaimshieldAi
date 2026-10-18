@@ -1,0 +1,6 @@
+policy_id,product,status,start_date,end_date,deductible,coverage_limit,auto_approval_limit
+POL-1001,motor_comprehensive,active,2026-01-15,2027-01-14,300,15000,2000
+POL-1002,motor_comprehensive,active,2026-09-25,2027-09-24,300,15000,2000
+POL-1003,motor_third_party,active,2025-07-01,2026-06-30,500,8000,1500
+POL-1004,motor_comprehensive,cancelled,2026-02-01,2027-01-31,300,15000,2000
+POL-1005,motor_comprehensive,active,2025-03-10,2027-03-09,300,15000,2000

@@ -1,0 +1,5 @@
+claim_id,policy_id,incident_date,claimed_amount,status
+CLM-H001,POL-1001,2025-11-03,800,closed
+CLM-H002,POL-1005,2026-01-20,650,closed
+CLM-H003,POL-1005,2026-04-02,1200,closed
+CLM-H004,POL-1005,2026-07-15,900,closed

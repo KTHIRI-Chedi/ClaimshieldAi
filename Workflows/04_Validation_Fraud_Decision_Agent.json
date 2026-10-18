@@ -1,0 +1,1780 @@
+{
+  "id": "hyKQcsHn7Jr2K7qH",
+  "name": "04_Validation_Fraud_Decision_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Validation & Fraud Decision Agent: the whole claim scenario\n**1. Claim page** (http://localhost:5678/webhook/claim, with a map pop-up to pin the exact place) or **Claim Form** (/form/claimshield, no map): name, email, phone, date and time, location, what happened, photos, invoice. No policy number: the Policy RAG agent finds the relevant policy clauses.\n**2. Validation** (top row): required fields, date not in the future, 1 to 8 photos, an invoice, photo fingerprints (reused?) and photo dates. Invalid claims are rejected before any AI call.\n**3. Dispatch**: photos → **Visual Inspection** (describes the accident) · invoice → **Invoice OCR** (summary + key information) · description → **Policy RAG** (relevant policy clauses, local gemma2) · date, time, address and description → **Incident Plausibility** (story vs map and weather; local Ollama model).\n**4. Fraud score**: the four outputs come back here: rule score (design section 4.6, max 60) + Gemini adjustment (max 40) → auto-approve < 20 and amount <= 2000 TND, human review 20-49, fraud investigation >= 50 with 2 signs or a reused photo.\n**5. Messages**: one email to the client, one to the insurance team, saved in Airtable, shown on the result page.\n\nThe test runner (04b) still calls this workflow with stage = validate / decide (left triggers).",
+        "height": 420,
+        "width": 620,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -300
+      ],
+      "id": "51048435-e6f3-44ad-9cef-16df56ac11be",
+      "name": "About"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        384
+      ],
+      "id": "dbdd1a9c-0816-4b01-b4c2-a1d09306df8b",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        592
+      ],
+      "id": "11ee0304-42e7-4322-ad95-183abed05002",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sample input for testing this workflow on its own.\n// Set STAGE to 'validate' or 'decide', then click \"Execute workflow\".\nconst STAGE = 'validate';\n\nconst claim = {\n  claim_id: 'CLM-0001',\n  policy_id: 'POL-1001',\n  incident_date: '2026-10-10',\n  incident_location: 'Tunis',\n  description: 'Rear-ended at a red light. Rear bumper and trunk lid damaged.',\n  claimed_amount: 1450,\n  photo_count: 3,\n  photo_taken_dates: ['2026-10-10', '2026-10-10', '2026-10-11'],\n  photo_reused: false,\n  has_invoice: true,\n};\n\nif (STAGE === 'validate') {\n  return [{ json: { stage: 'validate', claim } }];\n}\n\n// In the real pipeline the orchestrator passes the output of the validate stage\n// and of the three agents. These samples follow their current output formats.\nreturn [{\n  json: {\n    stage: 'decide',\n    claim,\n    validation: {\n      valid: true,\n      reasons: [],\n      policy: {\n        policy_id: 'POL-1001', product: 'motor_comprehensive', status: 'active',\n        start_date: '2026-01-15', end_date: '2027-01-14',\n        deductible: 300, coverage_limit: 15000, auto_approval_limit: 2000,\n      },\n      policy_age_days: 268,\n      claims_last_12m: 1,\n    },\n    // Visual Inspection Agent (Fedi)\n    visual: {\n      claim_id: 'CLM-0001',\n      damage_severity: 2,\n      damaged_parts: ['pare-choc arriere', 'coffre'],\n      impact_zone: 'arriere',\n      matches_description: true,\n      mismatch_reason: '',\n      pre_existing_damage_signs: false,\n      pre_existing_reason: '',\n      same_vehicle_across_photos: true,\n      suspicious_image_flags: [],\n    },\n    // Invoice Parser Agent (format still to be agreed)\n    invoice: {\n      totals_match: true,\n      total: 1450,\n      line_items: [\n        { part: 'Pare-choc arrière', type: 'part', quantity: 1, unit_price: 620 },\n        { part: 'Coffre', type: 'part', quantity: 1, unit_price: 480 },\n        { part: 'Main d\\'oeuvre', type: 'labor', quantity: 5, unit_price: 70 },\n      ],\n    },\n    // Policy RAG Agent (Chedi)\n    policy_rag: {\n      coverage_status: 'COVERED',\n      cited_clauses: ['Section 4.2 - Collision damage'],\n      reasoning: 'Collision damage to the insured vehicle is covered.',\n      flagged_exclusions: [],\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        592
+      ],
+      "id": "68d98858-5177-48f7-8976-cc607adc92dc",
+      "name": "Test Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d5bc9c01-07c6-4add-86ba-443fcf79cae4",
+              "leftValue": "={{ $json.stage }}",
+              "rightValue": "decide",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        464,
+        464
+      ],
+      "id": "18aebe40-97ea-4c8c-b3da-17d404abb9fa",
+      "name": "Stage is decide?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Checks that the claim has every required field before anything else runs.\nreturn $input.all().map(item => {\n  const claim = item.json.claim ?? item.json;\n  const errors = [];\n\n  // claimed_amount may be left out when an invoice is attached: the invoice total is used instead.\n  const required = ['claim_id', 'incident_date', 'description'];\n  if (!claim.has_invoice) required.push('claimed_amount');\n  for (const f of required) {\n    if (claim[f] === undefined || claim[f] === null || String(claim[f]).trim() === '') {\n      errors.push(`Missing field: ${f}`);\n    }\n  }\n\n  if (claim.incident_date) {\n    const d = new Date(claim.incident_date);\n    if (isNaN(d)) errors.push('incident_date is not a valid date');\n    else if (d > new Date()) errors.push('incident_date is in the future');\n  }\n\n  const amount = Number(claim.claimed_amount);\n  if (claim.claimed_amount !== undefined && !(amount > 0)) {\n    errors.push('claimed_amount must be a positive number');\n  }\n\n  const photos = Number(claim.photo_count ?? 0);\n  if (photos < 1 || photos > 8) errors.push('photo_count must be between 1 and 8');\n\n  if (claim.has_invoice === false) errors.push('Repair invoice is missing');\n\n  return { json: { claim: { ...claim, ...(claim.claimed_amount !== undefined ? { claimed_amount: amount } : {}) }, field_errors: errors } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        224
+      ],
+      "id": "568129dd-8962-44ed-bc69-791696b80e47",
+      "name": "Check Required Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decides whether the claim can go on to the AI agents: required fields, a date that is not in the\n// future, 1 to 8 photos and an invoice. An invalid claim is rejected here, before any AI call.\n// (The policy number and the policy lookup were removed: the policy is found by the Policy RAG agent.)\nreturn $input.all().map(item => {\n  const { claim, field_errors } = item.json;\n  return {\n    json: {\n      stage: 'validate',\n      claim_id: claim.claim_id,\n      valid: field_errors.length === 0,\n      reasons: [...field_errors],\n      checked_at: new Date().toISOString(),\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        224
+      ],
+      "id": "dc952e33-b2a9-4886-847f-1699fb41ff24",
+      "name": "Claim Checks"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rule-based part of the risk score (max 60), from section 4.6 of the design.\n// Every point comes with a warning sign that explains it.\nconst norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();\n\nreturn $input.all().map(item => {\n  const { claim = {}, validation = {}, visual, invoice, policy_rag, plausibility } = item.json;\n  const signs = [];\n  const add = (code, points, detail) => signs.push({ code, points, detail });\n\n  // An agent that failed or was skipped must not count as \"no problem found\".\n  const missing_inputs = [];\n  if (!visual || visual.error) missing_inputs.push('visual');\n  if (!invoice || invoice.error) missing_inputs.push('invoice');\n  if (!policy_rag || policy_rag.error) missing_inputs.push('policy_rag');\n  // Only a failed plausibility run counts as missing (callers that don't send it at all are not penalised).\n  if (plausibility !== undefined && (!plausibility || plausibility.error)) missing_inputs.push('plausibility');\n  const v = visual && !visual.error ? visual : {};\n  const inv = invoice && !invoice.error ? invoice : {};\n\n  // Photo results come from the validate stage (validation.photo_checks);\n  // the claim fields are kept for callers that fill them in themselves.\n  const pc = validation.photo_checks ?? {};\n  if (pc.photo_reused === true || claim.photo_reused === true || v.photo_reused === true) {\n    const from = (pc.reused_from_claims ?? []).join(', ');\n    add('PHOTO_REUSED', 40, from ? `Same photo already used in claim ${from}` : 'Same photo already used in another claim');\n  }\n\n  if (v.matches_description === false) {\n    add('DAMAGE_MISMATCH', 20, v.mismatch_reason || 'Visible damage inconsistent with the described accident');\n  }\n\n  if (inv.totals_match === false) {\n    add('INVOICE_ARITHMETIC', 15, inv.arithmetic_issue || 'Invoice arithmetic does not add up');\n  }\n\n  const incident = new Date(claim.incident_date);\n  const early = (pc.photo_taken_dates ?? claim.photo_taken_dates ?? []).filter(d => new Date(d) < incident);\n  if (early.length) {\n    add('PHOTO_BEFORE_INCIDENT', 15, `${early.length} photo(s) dated before the incident date`);\n  }\n\n  // Invoiced parts that the photos do not show. Parts are compared by their shared code\n  // (rear_bumper, headlight_left...) when the invoice line has one; a line whose code could not be\n  // read (part_code: null) is not compared. Lines without the field fall back to a text match.\n  const seenRaw = v.damaged_parts || [];\n  const seen = seenRaw.map(norm);\n  const notVisible = (inv.line_items || [])\n    .filter(li => li.part && li.type !== 'labor' && li.type !== 'other')\n    .filter(li => {\n      if ('part_code' in li) return li.part_code !== null && !seenRaw.includes(li.part_code);\n      const p = norm(li.part);\n      return !seen.some(s => s.includes(p) || p.includes(s));\n    })\n    .map(li => li.part);\n  if (notVisible.length && missing_inputs.indexOf('visual') === -1) {\n    add('PART_NOT_VISIBLE', Math.min(notVisible.length * 5, 15), `Invoiced part(s) not visible in photos: ${notVisible.join(', ')}`);\n  }\n\n  if (v.pre_existing_damage_signs === true) {\n    add('PRE_EXISTING_DAMAGE', 10, v.pre_existing_reason || 'Signs of pre-existing damage');\n  }\n\n  // Incident Plausibility agent: story vs map, weather and invoice. Its own points are scaled by\n  // confidence (weighted_score) and capped at 20, and count as one warning sign.\n  const pl = plausibility && !plausibility.error ? plausibility : {};\n  const plPoints = Math.min(Math.round(Number(pl.weighted_score ?? pl.score ?? 0)), 20);\n  if ((pl.warning_signs || []).length && plPoints > 0) {\n    add('INCIDENT_IMPLAUSIBLE', plPoints, pl.summary || 'The incident story does not fit the map, weather or invoice');\n  }\n\n  const raw = signs.reduce((sum, s) => sum + s.points, 0);\n\n  return {\n    json: {\n      ...item.json,\n      rule_score: Math.min(raw, 60),\n      rule_score_uncapped: raw,\n      warning_signs: signs,\n      missing_inputs,\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        224
+      ],
+      "id": "76678e6a-2bf6-4fe6-a4ad-1998ac6be84d",
+      "name": "Rule Score"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are the Fraud Risk & Decision Agent of ClaimShield AI, reviewing a motor insurance damage claim.\n\nThe rule engine has already scored objective warning signs. Your job is to add nuance: look for inconsistencies between the claim, the photo analysis, the invoice and the policy result that the rules did NOT already count.\n\nCLAIM:\n{{ JSON.stringify($json.claim, null, 2) }}\n\nVALIDATION CHECK (required fields, photo fingerprints and dates):\n{{ JSON.stringify($json.validation, null, 2) }}\n\nVISUAL INSPECTION RESULT (accident_description = the accident as seen on the photos):\n{{ JSON.stringify($json.visual ?? null, null, 2) }}\n\nINVOICE RESULT (summary = what the invoice says):\n{{ JSON.stringify($json.invoice ?? null, null, 2) }}\n\nPOLICY COVERAGE RESULT:\n{{ JSON.stringify($json.policy_rag ? { coverage_status: $json.policy_rag.coverage_status, cited_clauses: $json.policy_rag.cited_clauses, reasoning: $json.policy_rag.reasoning, error: $json.policy_rag.error } : null, null, 2) }}\n\nINCIDENT PLAUSIBILITY RESULT (the story checked against the map, the weather and the invoiced parts):\n{{ JSON.stringify($json.plausibility ? { summary: $json.plausibility.summary, warning_signs: $json.plausibility.warning_signs, error: $json.plausibility.error } : null, null, 2) }}\n\nWARNING SIGNS ALREADY SCORED BY RULES (rule score {{ $json.rule_score }}/60):\n{{ JSON.stringify($json.warning_signs, null, 2) }}\n\nRULES FOR YOUR ANSWER:\n1. llm_adjustment is an integer from 0 to 40. Use 0 when you find nothing beyond the rules.\n2. Never re-count a warning sign that is already listed above.\n3. Every point you add must be explained in justification, citing the specific fields that support it.\n4. Base your answer only on the data above. Do not guess.\n5. Example concerns: claimed amount far above what the damage severity suggests, impact zone that does not fit the description, an accident time or description that does not fit what the photos show, invoiced work that does not fit the described accident.\n\nReturn ONLY a raw JSON object, with no markdown and no text around it:\n{\n  \"llm_adjustment\": <integer 0-40>,\n  \"justification\": \"<one or two sentences>\",\n  \"additional_concerns\": [\"<short concern>\"]\n}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        6240,
+        224
+      ],
+      "id": "50b26c6c-346d-4ecb-b59f-3b481510be51",
+      "name": "LLM Risk Assessment",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combines the rule score with the LLM adjustment and picks the route.\n// Thresholds from section 4.6; move them to a config table later.\nconst CONFIG = {\n  auto_approve_below: 20,\n  investigate_at: 50,\n  min_signs_for_investigation: 2,\n  llm_max: 40,\n  // Claims up to this amount (TND) can be approved without a person. There is no policy number on\n  // the claim any more, so the limit is a setting here instead of a field of the policy.\n  auto_approval_limit: 2000,\n};\n\nconst rules = $('Rule Score').all();\n\nreturn $input.all().map((item, i) => {\n  const base = rules[i].json;\n\n  // Some models write their reasoning (<think>...</think>) or extra text\n  // around the JSON, so look for the last object that has llm_adjustment.\n  const llm_raw = String(item.json.text ?? item.json.output ?? '');\n  const raw = llm_raw\n    .replace(/<think>[\\s\\S]*?<\\/think>/gi, '')\n    .replace(/```json|```/g, '')\n    .trim();\n  let llm = { llm_adjustment: 0, justification: '', additional_concerns: [] };\n  let llm_error = null;\n  let parsed = null;\n  const candidates = [raw, ...(raw.match(/\\{[^{}]*\\}/g) || []).reverse()];\n  for (const c of candidates) {\n    try {\n      const p = JSON.parse(c);\n      if (p && typeof p === 'object' && 'llm_adjustment' in p) { parsed = p; break; }\n    } catch (e) { /* try the next candidate */ }\n  }\n  if (parsed) llm = { ...llm, ...parsed };\n  else llm_error = llm_raw.trim() ? 'LLM output did not contain the expected JSON (see llm_raw)' : 'LLM returned an empty answer';\n\n  let adj = Math.round(Number(llm.llm_adjustment));\n  if (!Number.isFinite(adj)) adj = 0;\n  adj = Math.max(0, Math.min(adj, CONFIG.llm_max));\n  // The design requires every LLM adjustment to be justified in writing.\n  if (adj > 0 && !String(llm.justification || '').trim()) adj = 0;\n\n  const risk = Math.min(base.rule_score + adj, 100);\n  const amount = Number(base.claim?.claimed_amount);\n  const limit = CONFIG.auto_approval_limit;\n  const coverage = base.policy_rag?.coverage_status ?? 'UNKNOWN';\n  const signs = base.warning_signs;\n  const reused = signs.some(s => s.code === 'PHOTO_REUSED');\n\n  // Investigation needs a reused photo or two independent rule-based signs,\n  // so the LLM can never trigger an investigation on its own.\n  let route;\n  const route_reasons = [];\n  if (reused) {\n    route = 'fraud_investigation';\n    route_reasons.push('Reused photo');\n  } else if (risk >= CONFIG.investigate_at && signs.length >= CONFIG.min_signs_for_investigation) {\n    route = 'fraud_investigation';\n    route_reasons.push(`Risk score ${risk} with ${signs.length} warning signs`);\n  } else {\n    if (risk >= CONFIG.auto_approve_below) route_reasons.push(`Risk score ${risk} is ${CONFIG.auto_approve_below} or above`);\n    if (!(amount <= limit)) route_reasons.push(Number.isFinite(amount) ? `Amount ${amount} is above the auto-approval limit ${limit}` : 'Amount unknown (invoice total not read)');\n    if (coverage !== 'COVERED') route_reasons.push(`Coverage result is ${coverage}`);\n    if (base.missing_inputs.length) route_reasons.push(`Missing agent results: ${base.missing_inputs.join(', ')}`);\n    if (llm_error) route_reasons.push('LLM assessment failed');\n    route = route_reasons.length ? 'human_review' : 'auto_approve';\n    if (route === 'auto_approve') route_reasons.push(`Risk score ${risk} below ${CONFIG.auto_approve_below}, amount within limit, covered`);\n  }\n\n  return {\n    json: {\n      stage: 'decide',\n      claim_id: base.claim?.claim_id,\n      route,\n      route_reasons,\n      risk_score: risk,\n      rule_score: base.rule_score,\n      llm_adjustment: adj,\n      warning_signs: signs,\n      coverage: {\n        status: coverage,\n        cited_clauses: base.policy_rag?.cited_clauses ?? [],\n        reasoning: base.policy_rag?.reasoning ?? '',\n      },\n      justification: llm.justification,\n      additional_concerns: llm.additional_concerns ?? [],\n      missing_inputs: base.missing_inputs,\n      llm_error,\n      llm_raw: llm_error ? llm_raw.slice(0, 3000) : undefined,\n      decided_at: new Date().toISOString(),\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6544,
+        224
+      ],
+      "id": "7f5ba837-163f-4150-a68b-2c4e1e65dc10",
+      "name": "Decide Route"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.7-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        6180,
+        440
+      ],
+      "id": "eda3d923-4b67-4162-859e-b1bd2647931c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "TsosLZN4FB7kd8Rr",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reads every photo attached to the claim (binary images) and computes:\n// - a fingerprint (SHA-256) to spot the same photo sent in another claim\n// - the date the photo was taken, from its EXIF data (JPEG only)\n// Claims sent without image files keep the photo fields they already have.\n\nfunction sha256(bytes) {\n  const K = [\n    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,\n    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,\n    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,\n    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,\n    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,\n  ];\n  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  const len = bytes.length;\n  const total = Math.ceil((len + 9) / 64) * 64;\n  const msg = new Uint8Array(total);\n  msg.set(bytes);\n  msg[len] = 0x80;\n  const bits = len * 8;\n  const view = new DataView(msg.buffer);\n  view.setUint32(total - 8, Math.floor(bits / 0x100000000));\n  view.setUint32(total - 4, bits >>> 0);\n  const W = new Uint32Array(64);\n  const rotr = (x, n) => (x >>> n) | (x << (32 - n));\n  for (let off = 0; off < total; off += 64) {\n    for (let t = 0; t < 16; t++) W[t] = view.getUint32(off + t * 4);\n    for (let t = 16; t < 64; t++) {\n      const s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >>> 3);\n      const s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >>> 10);\n      W[t] = (W[t - 16] + s0 + W[t - 7] + s1) >>> 0;\n    }\n    let [a, b, c, d, e, f, g, h] = H;\n    for (let t = 0; t < 64; t++) {\n      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);\n      const t1 = (h + S1 + ((e & f) ^ (~e & g)) + K[t] + W[t]) >>> 0;\n      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);\n      const t2 = (S0 + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;\n      h = g; g = f; f = e; e = (d + t1) >>> 0;\n      d = c; c = b; b = a; a = (t1 + t2) >>> 0;\n    }\n    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;\n    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;\n  }\n  return H.map(x => x.toString(16).padStart(8, '0')).join('');\n}\n\n// Returns 'YYYY-MM-DD' from the JPEG's EXIF data, or null when there is none\n// (screenshots and photos sent through WhatsApp usually have no EXIF).\nfunction exifDate(bytes) {\n  try {\n    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n    if (v.getUint16(0) !== 0xffd8) return null;\n    let off = 2;\n    while (off + 4 <= bytes.length) {\n      if (bytes[off] !== 0xff) return null;\n      const marker = bytes[off + 1];\n      if (marker === 0xda || marker === 0xd9) return null;\n      const size = v.getUint16(off + 2);\n      const isExif = marker === 0xe1 && String.fromCharCode(...bytes.slice(off + 4, off + 8)) === 'Exif';\n      if (isExif) {\n        const tiff = off + 10;\n        const le = v.getUint16(tiff) === 0x4949;\n        const u16 = p => v.getUint16(p, le);\n        const u32 = p => v.getUint32(p, le);\n        const readIfd = start => {\n          const tags = {};\n          const n = u16(start);\n          for (let i = 0; i < n; i++) {\n            const e = start + 2 + i * 12;\n            tags[u16(e)] = { type: u16(e + 2), count: u32(e + 4), value: u32(e + 8), at: e + 8 };\n          }\n          return tags;\n        };\n        const text = t => {\n          if (!t || t.type !== 2) return null;\n          const p = t.count > 4 ? tiff + t.value : t.at;\n          return String.fromCharCode(...bytes.slice(p, p + t.count)).replace(/\\0.*$/, '');\n        };\n        const ifd0 = readIfd(tiff + u32(tiff + 4));\n        const exif = ifd0[0x8769] ? readIfd(tiff + ifd0[0x8769].value) : {};\n        const raw = text(exif[0x9003]) || text(exif[0x9004]) || text(ifd0[0x0132]);\n        const m = /^(\\d{4}):(\\d{2}):(\\d{2})/.exec(raw || '');\n        return m ? `${m[1]}-${m[2]}-${m[3]}` : null;\n      }\n      off += 2 + size;\n    }\n  } catch (e) { /* unreadable EXIF counts as no date */ }\n  return null;\n}\n\nconst items = $input.all();\nconst out = [];\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const claim = item.json.claim ?? item.json;\n  const photo_info = [];\n\n  for (const [key, file] of Object.entries(item.binary ?? {})) {\n    if (!String(file.mimeType).startsWith('image/')) continue; // the invoice PDF is not a photo\n    const bytes = new Uint8Array(await this.helpers.getBinaryDataBuffer(i, key));\n    photo_info.push({ file: file.fileName || key, hash: sha256(bytes), taken_date: exifDate(bytes) });\n  }\n\n  const newClaim = photo_info.length\n    ? {\n        ...claim,\n        photo_count: photo_info.length,\n        photo_taken_dates: photo_info.map(p => p.taken_date).filter(Boolean),\n        photo_hashes: photo_info.map(p => p.hash),\n      }\n    : { ...claim, photo_hashes: claim.photo_hashes ?? [] };\n\n  const hashes = newClaim.photo_hashes;\n  out.push({\n    json: {\n      ...item.json,\n      claim: newClaim,\n      photo_info,\n          },\n  });\n}\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        224
+      ],
+      "id": "87ed83fe-417e-4949-8a69-8c722c823ffc",
+      "name": "Read Photos"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "GPB9guZVkRCEAFdq",
+          "mode": "list",
+          "cachedResultName": "photo hashes",
+          "cachedResultUrl": "/projects/mk16DcOfDp4ziokc/datatables/GPB9guZVkRCEAFdq"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": []
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2128,
+        224
+      ],
+      "id": "1cd4b6c3-92ab-4f9b-9c12-f8d005b156bc",
+      "name": "Find Photo Hashes",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compares this claim's photo fingerprints with the ones saved from earlier claims\n// (n8n Data Table \"photo hashes\", shared with the Visual Inspection agent).\n// A match from another claim means the photo was reused (+40 at the decide stage).\nconst result = $('Claim Checks').first().json;\nconst claim = $('Check Required Fields').first().json.claim;\nconst info = $('Read Photos').first().json.photo_info ?? [];\nconst hashes = claim.photo_hashes ?? [];\nconst mine = new Set(hashes);\n\nconst found = $('Find Photo Hashes').all().map(i => i.json).filter(r => r.hash && mine.has(r.hash));\nconst fromOtherClaims = found.filter(r => r.claim_id !== claim.claim_id);\nconst known = new Set(found.map(r => r.hash));\n\nreturn [{\n  json: {\n    ...result,\n    photo_checks: {\n      photos_checked: hashes.length,\n      photo_reused: fromOtherClaims.length > 0,\n      reused_from_claims: [...new Set(fromOtherClaims.map(r => r.claim_id))],\n      photo_taken_dates: claim.photo_taken_dates ?? [],\n      photos_without_date: info.filter(p => !p.taken_date).map(p => p.file),\n    },\n    // Fingerprints seen for the first time, saved so later claims can be compared.\n    _new_photo_rows: [...new Set(hashes)]\n      .filter(h => !known.has(h))\n      .map(h => ({ hash: h, claim_id: claim.claim_id, photo_key: (info.find(p => p.hash === h) || {}).file || '' })),\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        224
+      ],
+      "id": "1b08d306-2419-4b3a-8ea0-7f603d8910d4",
+      "name": "Photo Checks"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ae4d8337-02cd-4a51-9a30-12602b88aae6",
+              "leftValue": "={{ $json._new_photo_rows.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2608,
+        224
+      ],
+      "id": "4628dd9a-e75b-47b2-b4e3-7e1ac232ee3a",
+      "name": "New photos to save?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// One Airtable row per new photo fingerprint.\nreturn $input.first().json._new_photo_rows.map(r => ({ json: r }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2848,
+        64
+      ],
+      "id": "ecd24b41-31ab-4294-bed6-a62f9494b203",
+      "name": "One Row Per Photo"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "GPB9guZVkRCEAFdq",
+          "mode": "list",
+          "cachedResultName": "photo hashes",
+          "cachedResultUrl": "/projects/mk16DcOfDp4ziokc/datatables/GPB9guZVkRCEAFdq"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hash": "={{ $json.hash }}",
+            "claim_id": "={{ $json.claim_id }}",
+            "photo_key": "={{ $json.photo_key }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "hash",
+              "displayName": "hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "claim_id",
+              "displayName": "claim_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "photo_key",
+              "displayName": "photo_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3088,
+        64
+      ],
+      "id": "8c15cc13-a19b-4b4f-b702-fd50a6c354ef",
+      "name": "Save Photo Hashes"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final answer of the validate stage, returned to the main workflow.\nconst { _new_photo_rows, ...result } = $('Photo Checks').first().json;\nreturn [{ json: result }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3328,
+        224
+      ],
+      "id": "26b4d152-af12-46a7-8a94-a459ed173bbf",
+      "name": "Validation Result"
+    },
+    {
+      "parameters": {
+        "content": "## Photo checks\n**Read Photos** takes every image attached to the claim, computes its fingerprint (SHA-256) and reads the date it was taken (EXIF).\n**Find Photo Hashes** reads the n8n Data Table *photo hashes* (shared with the Visual Inspection agent); a match from another claim means the photo was reused.\nNew fingerprints are saved so later claims are compared with this one.\n\nLimits: only exact copies are caught, and photos without EXIF (screenshots, WhatsApp) have no date.",
+        "height": 300,
+        "width": 520,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2128,
+        -200
+      ],
+      "id": "c739b82d-2428-4caa-bac0-3462bb2de398",
+      "name": "Photo checks note"
+    },
+    {
+      "parameters": {
+        "formTitle": "Declare a car damage claim",
+        "formDescription": "Tell us what happened and attach your photos and the repair invoice. Our assessment runs in a few minutes and the answer appears on this page and in your mailbox.",
+        "formFields": {
+          "values": [
+            {
+              "fieldType": "html",
+              "html": "<h3 class=\"first\">Your details</h3>"
+            },
+            {
+              "fieldLabel": "Full name",
+              "fieldName": "full_name",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. Amine Ben Salah"
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldName": "client_email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "you@example.com"
+            },
+            {
+              "fieldLabel": "Phone (optional)",
+              "fieldName": "phone",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "e.g. +216 20 123 456"
+            },
+            {
+              "fieldType": "html",
+              "html": "<h3>The accident</h3>"
+            },
+            {
+              "fieldLabel": "Date",
+              "fieldName": "incident_date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Time (HH:MM)",
+              "fieldName": "incident_time",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. 18:40"
+            },
+            {
+              "fieldLabel": "Street and number",
+              "fieldName": "street",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. 12 Avenue Habib Bourguiba"
+            },
+            {
+              "fieldLabel": "City",
+              "fieldName": "city",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. Tunis"
+            },
+            {
+              "fieldLabel": "Postal code (optional)",
+              "fieldName": "postal_code",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "e.g. 1001"
+            },
+            {
+              "fieldLabel": "Country",
+              "fieldName": "country",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Tunisia"
+                  },
+                  {
+                    "option": "Algeria"
+                  },
+                  {
+                    "option": "Morocco"
+                  },
+                  {
+                    "option": "France"
+                  },
+                  {
+                    "option": "Other"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "What happened?",
+              "fieldName": "description",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "e.g. I was stopped at a red light when the car behind me hit my rear bumper."
+            },
+            {
+              "fieldType": "html",
+              "html": "<h3>Documents</h3>"
+            },
+            {
+              "fieldLabel": "Photos of the damage (1 to 8, JPG or PNG)",
+              "fieldName": "photos",
+              "fieldType": "file",
+              "requiredField": true,
+              "multipleFiles": true,
+              "acceptFileTypes": ".jpg,.jpeg,.png"
+            },
+            {
+              "fieldLabel": "Repair invoice (PDF)",
+              "fieldName": "invoice",
+              "fieldType": "file",
+              "requiredField": true,
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf"
+            },
+            {
+              "fieldType": "hiddenField",
+              "fieldName": "incident_lat",
+              "fieldValue": ""
+            },
+            {
+              "fieldType": "hiddenField",
+              "fieldName": "incident_lon",
+              "fieldValue": ""
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {
+          "path": "claimshield",
+          "buttonLabel": "Submit my claim",
+          "appendAttribution": false,
+          "customCss": "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');\n:root {\n  --font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\n  --font-weight-normal: 400;\n  --font-weight-bold: 600;\n  --font-size-body: 13px;\n  --font-size-label: 14px;\n  --font-size-input: 15px;\n  --font-size-header: 26px;\n  --font-size-paragraph: 14px;\n  --font-size-subheader: 15px;\n  --color-background: #eef1f6;\n  --color-card-bg: #ffffff;\n  --color-card-border: #e4e7ec;\n  --color-card-shadow: rgba(16, 24, 40, 0.08);\n  --color-header: #0b1f44;\n  --color-header-subtext: #475467;\n  --color-label: #344054;\n  --color-input-border: #d0d5dd;\n  --color-input-text: #101828;\n  --color-focus-border: #3b5bdb;\n  --color-submit-btn-bg: #0b1f44;\n  --color-submit-btn-text: #ffffff;\n  --color-required: #d92d20;\n  --color-html-text: #475467;\n  --color-link: #667085;\n  --border-radius-card: 16px;\n  --border-radius-input: 10px;\n  --card-border-radius: 16px;\n  --padding-container-top: 40px;\n  --padding-card: 32px;\n  --card-padding: 32px;\n  --padding-form-input: 12px 14px;\n  --container-width: 640px;\n  --submit-btn-height: 52px;\n  --box-shadow-card: 0 12px 32px 0 var(--color-card-shadow);\n}\nbody { background: linear-gradient(180deg, #0b1f44 0, #0b1f44 220px, var(--color-background) 220px) no-repeat, var(--color-background); }\n.container { max-width: calc(100vw - 32px); }\n.form-header h1 { font-weight: 700; letter-spacing: -0.3px; }\n.form-header p { line-height: 1.6; }\n.form-group { margin-bottom: 18px; }\n.form-label { font-weight: 500; }\n.form-input, input, textarea, select { transition: border-color .15s, box-shadow .15s; }\n.form-input:focus, input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 4px rgba(59, 91, 219, 0.15); outline: none; }\ntextarea { min-height: 110px; }\n.html h3 { margin: 26px 0 4px; padding-top: 18px; border-top: 1px solid #eaecf0; color: #0b1f44; font-size: 16px; font-weight: 600; }\n.html h3.first { border-top: none; padding-top: 0; margin-top: 4px; }\n.html p { margin: 0 0 4px; color: #667085; font-size: 13px; }\nbutton[type='submit'], #submit-btn { border-radius: 12px; font-weight: 600; font-size: 15px; letter-spacing: .2px; transition: transform .1s, box-shadow .15s; }\nbutton[type='submit']:hover, #submit-btn:hover { box-shadow: 0 8px 20px rgba(11, 31, 68, .25); transform: translateY(-1px); }\ntextarea, input, select { font-family: var(--font-family); }\n.form-group.html h3, .html h3 { font-weight: 600; color: #0b1f44; }\n"
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        96
+      ],
+      "id": "30acfe31-d7ce-4465-ac23-71386d1d8e7d",
+      "name": "Claim Form",
+      "webhookId": "812d3da2-922b-4977-9c2f-5feee803ba26"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 1 of the scenario: turns the form answers into one claim and gives it an ID.\n// Photos keep their binary keys (photos_0, photos_1...), the invoice PDF goes to \"invoice\".\n// There is no amount field: the amount claimed is the invoice total, read later by the OCR agent.\nconst f = $input.first().json;\nconst bin = $input.first().binary ?? {};\nconst pad = n => String(n).padStart(2, '0');\nconst now = new Date();\nconst claim_id = `CLM-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;\nconst clean = v => String(v ?? '').trim();\n\nconst photos = {};\nlet invoice = null;\nfor (const [key, file] of Object.entries(bin)) {\n  if (key.startsWith('invoice')) invoice = file;\n  else if (String(file.mimeType).startsWith('image/')) photos[`photos_${Object.keys(photos).length}`] = file;\n}\n\nconst date = clean(f.incident_date).slice(0, 10);\nconst time = /^\\d{1,2}:\\d{2}$/.test(clean(f.incident_time)) ? clean(f.incident_time).padStart(5, '0') : '';\nconst location = { street: clean(f.street), city: clean(f.city), postal_code: clean(f.postal_code), country: clean(f.country) || 'Tunisia',\n  // Map pin from the claim page (empty when the client used the form without the map).\n  lat: Number.isFinite(parseFloat(f.incident_lat)) ? parseFloat(f.incident_lat) : null,\n  lon: Number.isFinite(parseFloat(f.incident_lon)) ? parseFloat(f.incident_lon) : null };\n\nconst claim = {\n  claim_id,\n  client_name: clean(f.full_name),\n  client_email: clean(f.client_email),\n  client_phone: clean(f.phone),\n  incident_date: date,\n  incident_time: time,\n  incident_datetime: `${date}T${time || '12:00'}:00`,\n  location,\n  // One line for the map lookup of the plausibility agent: \"street, postal code city, country\"\n  incident_location: [location.street, [location.postal_code, location.city].filter(Boolean).join(' '), location.country].filter(Boolean).join(', '),\n  description: clean(f.description),\n  claim_type: 'not specified (see description)',\n  photo_count: Object.keys(photos).length,\n  has_invoice: invoice !== null,\n  submitted_at: now.toISOString(),\n};\n\nreturn [{ json: { stage: 'validate', claim }, binary: { ...photos, ...(invoice ? { invoice } : {}) } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        96
+      ],
+      "id": "fbc5b49e-976a-4f55-b30d-7ce936947951",
+      "name": "Prepare Claim"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "06835824-0b56-457b-bbcc-9c2bd030ed17",
+              "leftValue": "={{ $('Claim Form').isExecuted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3568,
+        224
+      ],
+      "id": "d05bb8f6-c0fd-4bb3-8cda-0bc39cd7d423",
+      "name": "From the form? (validation)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3808,
+        424
+      ],
+      "id": "9f12fd77-9fc1-4d99-ab17-7b3c61107b5f",
+      "name": "Return validation"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9a708567-10fd-4a99-a29b-30ea6fbc0ca8",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3808,
+        208
+      ],
+      "id": "6c8d8049-dc90-43eb-be0d-2bbde39678da",
+      "name": "Claim valid?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Images -> Visual Inspection agent. It describes the accident seen on the photos.\nconst { claim } = $('Prepare Claim').first().json;\nconst { invoice, ...photos } = $('Prepare Claim').first().binary ?? {};\nreturn [{\n  json: {\n    claim_id: claim.claim_id,\n    description: claim.description,\n    incident_date: claim.incident_date,\n    photo_count: claim.photo_count,\n    claim_type: claim.claim_type,\n  },\n  binary: photos,\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4088,
+        -16
+      ],
+      "id": "438dc264-4fa5-442c-965a-af8428fe63fc",
+      "name": "Send Photos"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "aQlE6lyhtVg2Xo4f",
+          "mode": "list",
+          "cachedResultName": "03_Visual_Inspection_Agent",
+          "cachedResultUrl": "/workflow/aQlE6lyhtVg2Xo4f"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "claim_id": "={{ $json.claim_id }}",
+            "description": "={{ $json.description }}",
+            "incident_date": "={{ $json.incident_date }}",
+            "photo_count": "={{ $json.photo_count }}",
+            "claim_type": "={{ $json.claim_type }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "claim_id",
+              "displayName": "claim_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "incident_date",
+              "displayName": "incident_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "photo_count",
+              "displayName": "photo_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "claim_type",
+              "displayName": "claim_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4328,
+        -16
+      ],
+      "id": "aa6e54e8-baee-4598-a9fc-1d8f788f8a07",
+      "name": "Visual Inspection Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Invoice -> OCR agent. The Invoice Parser reads a file path, so the uploaded PDF is first saved to\n// /data/invoices/<claim_id>.pdf (the project's data folder, shared with n8n).\nconst { claim } = $('Prepare Claim').first().json;\nconst { invoice } = $('Prepare Claim').first().binary ?? {};\nreturn [{ json: { file_path: `/data/invoices/${claim.claim_id}.pdf`, claim_id: claim.claim_id }, binary: { invoice } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4088,
+        208
+      ],
+      "id": "debc6edc-0706-4fa3-a8a6-489dad6b900a",
+      "name": "Invoice File"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json.file_path }}",
+        "dataPropertyName": "invoice",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        4328,
+        208
+      ],
+      "id": "90ea4676-83fd-44ac-8bc7-89bebdbc4c6e",
+      "name": "Save Invoice File",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input of the Invoice OCR agent: the path of the saved PDF.\nreturn [{ json: { file_path: $('Invoice File').first().json.file_path } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4568,
+        208
+      ],
+      "id": "06414ed5-f5e9-4f24-9243-61d0e9404559",
+      "name": "Send Invoice"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "7uwN60tegMMIxTPn",
+          "mode": "list",
+          "cachedResultName": "03_Invoice_Parser_Agent",
+          "cachedResultUrl": "/workflow/7uwN60tegMMIxTPn"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4808,
+        208
+      ],
+      "id": "16d09702-a8e4-44e2-bc3f-5aa53a0c6ac7",
+      "name": "Invoice OCR Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Description -> Policy RAG agent. It searches the policy for the clauses that fit this accident.\nconst { claim } = $('Prepare Claim').first().json;\nreturn [{\n  json: {\n    claim: {\n      claim_id: claim.claim_id,\n      claim_type: claim.claim_type,\n      incident_date: claim.incident_date,\n      incident_time: claim.incident_time,\n      description: claim.description,\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4088,
+        432
+      ],
+      "id": "4fd16c67-1bd5-4ba2-9a6b-563bfd699e91",
+      "name": "Send Description"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "FwCOIOAfJsT7eTvB",
+          "mode": "list",
+          "cachedResultName": "RAG Agent & LLM-as-a-Judge Pipeline",
+          "cachedResultUrl": "/workflow/FwCOIOAfJsT7eTvB"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4328,
+        432
+      ],
+      "id": "0ba6cea7-1569-4538-9a89-a97736638884",
+      "name": "Policy RAG Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        5768,
+        208
+      ],
+      "id": "ed68390a-73a6-435f-b36c-eda32cb92dbf",
+      "name": "All Agents Answered"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 3 of the scenario: the four agents' answers come back to the validation agent.\n// They are put in the format the fraud scoring reads. An agent that failed is passed as\n// { error: true }, which sends the claim to a human (never auto-approved).\nconst failure = (r, name) => {\n  if (r && !r.error) return null;\n  const e = r?.error;\n  const message = typeof e === 'string' ? e : e?.message || r?.error_message || r?.reason || `${name} returned nothing`;\n  return { error: true, error_message: String(message).slice(0, 500) };\n};\nconst first = name => { try { return $(name).first().json; } catch (e) { return null; } };\n\nconst validation = $('Validation Result').first().json;\n\n// Visual Inspection: field names differ slightly from the scoring's.\nconst v = first('Visual Inspection Agent');\nconst visual = failure(v, 'Visual Inspection') || {\n  ...v,\n  damaged_parts: v.damaged_parts ?? v.damaged_items ?? [],\n  photo_reused: v.duplicate_photo_detected === true,\n  reused_from_claims: (v.duplicate_photos || []).map(d => d.previous_claim_id),\n  same_vehicle_across_photos: v.same_asset_across_photos,\n};\n\n// Invoice OCR, with the part codes added by \"Map Invoice Parts\"\nconst inv = first('Map Invoice Parts');\nconst invoice = failure(inv, 'Invoice OCR') || inv;\n\nconst rag = first('Policy RAG Agent');\nconst policy_rag = failure(rag && rag.coverage_status ? rag : { error: rag?.error || 'no coverage_status in the answer' }, 'Policy RAG') || {\n  coverage_status: rag.coverage_status, cited_clauses: rag.cited_clauses, reasoning: rag.reasoning, eval_score: rag.eval_score,\n};\n\nconst pl = first('Incident Plausibility Agent');\nconst plausibility = failure(pl && pl.agent ? pl : { error: pl?.error || 'no result' }, 'Incident Plausibility') || pl;\n\n// The amount claimed is the invoice total (the form has no amount field).\nconst total = Number(invoice.key_info?.total ?? invoice.invoice?.total);\nconst claim = { ...$('Check Required Fields').first().json.claim };\nif (Number.isFinite(total) && total > 0) claim.claimed_amount = total;\n\nreturn [{ json: { stage: 'decide', claim, validation, visual, invoice, policy_rag, plausibility } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6008,
+        208
+      ],
+      "id": "9cc972f0-8514-4ec7-b3c7-930365b9fe20",
+      "name": "Collect Agent Results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// A claim that fails validation (missing information, no photo or invoice, a date in the future...)\n// is rejected here, before any AI agent runs.\nconst v = $input.first().json;\nconst { claim } = $('Prepare Claim').first().json;\nconst reasons = v.error\n  ? [`Validation could not run: ${v.error?.message || v.error}`]\n  : (v.reasons?.length ? v.reasons : ['Claim is not valid']);\nreturn [{\n  json: {\n    ...claim,\n    claimed_amount: null,\n    route: 'rejected',\n    risk_score: null,\n    warning_signs: [],\n    route_reasons: reasons,\n    justification: '',\n    missing_inputs: [],\n    agents: {},\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4088,
+        684
+      ],
+      "id": "6571ccc2-e577-4127-a0b7-26bd57ad455d",
+      "name": "Rejection Record"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0532a596-e3e9-4360-824f-4f8ac53ade5f",
+              "leftValue": "={{ $('Claim Form').isExecuted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6784,
+        224
+      ],
+      "id": "a9acd06d-04cc-41ee-a1f7-e1d5a7a6557f",
+      "name": "From the form? (decision)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        7024,
+        424
+      ],
+      "id": "48a4df23-b5c4-4335-a3fe-b8dfd3f7c808",
+      "name": "Return decision"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The decision record (design section 4.7): the route, the score and why, plus what each agent said.\nconst d = $input.first().json;\nconst input = $('Collect Agent Results').first().json;\nconst { claim, validation, visual, invoice, policy_rag, plausibility } = input;\nconst ok = d.route && !d.error;\nconst failed = r => !r || r.error;\nconst { photo_hashes, photo_taken_dates, ...claimInfo } = claim;\n\nreturn [{\n  json: {\n    ...claimInfo,\n    claimed_amount: claim.claimed_amount ?? null,\n    route: ok ? d.route : 'human_review',\n    risk_score: d.risk_score ?? null,\n    rule_score: d.rule_score ?? null,\n    llm_adjustment: d.llm_adjustment ?? null,\n    warning_signs: d.warning_signs ?? [],\n    route_reasons: ok ? d.route_reasons : [`Decision agent failed: ${d.error?.message || d.error || 'no result'}`],\n    justification: d.justification ?? '',\n    missing_inputs: d.missing_inputs ?? [],\n    // What each agent produced (step 2 of the scenario)\n    agents: {\n      visual: failed(visual)\n        ? { ok: false, error: visual?.error_message || 'no result' }\n        : { ok: true, accident_description: visual.accident_description || visual.summary || '', severity: visual.damage_severity, damaged_parts: visual.damaged_parts || [] },\n      invoice: failed(invoice)\n        ? { ok: false, error: invoice?.error_message || 'no result' }\n        : { ok: true, summary: invoice.summary || '', key_info: invoice.key_info || {}, status: invoice.status },\n      policy_rag: failed(policy_rag)\n        ? { ok: false, error: policy_rag?.error_message || 'no result' }\n        : { ok: true, coverage_status: policy_rag.coverage_status, cited_clauses: policy_rag.cited_clauses || [], explanation: policy_rag.reasoning || '' },\n      plausibility: failed(plausibility)\n        ? { ok: false, error: plausibility?.error_message || 'no result' }\n        : { ok: true, summary: plausibility.summary, score: plausibility.score, warning_signs: plausibility.warning_signs || [] },\n      photo_checks: validation.photo_checks ?? null,\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7024,
+        208
+      ],
+      "id": "c3a75239-741b-4ea0-8d80-340b10440702",
+      "name": "Decision Record"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 4 of the scenario: one message for the client and one for the insurance team.\n// The insurer always gets the full picture (score, warning signs, every agent's output).\n// The client gets the decision and why, in plain words; when it is not a fraud case he also gets\n// what his policy says about this accident (from the Policy RAG agent). The client is never told\n// about a fraud suspicion (design section 4.8): a fraud case reads like a normal manual review to him.\nconst SETTINGS = {\n  insurer_email: 'claims-team@example.com', // who receives the insurer message: change it to your address\n  from_email: 'ClaimShield AI <claimshield@example.com>', // sender: use the address of your SMTP account\n  company: 'ClaimShield Insurance',\n};\n\nconst r = $input.first().json;\nconst esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c]));\nconst known = n => n !== null && n !== undefined && Number.isFinite(Number(n));\nconst money = n => (known(n) ? `${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TND` : 'unknown');\nconst when = `${r.incident_date}${r.incident_time ? ` at ${r.incident_time}` : ''}`;\nconst where = r.incident_location || '';\nconst loc = r.location || {};\nconst mapLink = loc.lat != null && loc.lon != null\n  ? ` (<a href=\"https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lon}#map=18/${loc.lat}/${loc.lon}\">pinned on the map</a>)` : '';\nconst a = r.agents || {};\nconst rag = a.policy_rag || {};\nconst firstName = String(r.client_name || '').split(' ')[0];\n\nconst ROUTES = {\n  auto_approve: { label: 'Approved', color: '#0f7b4a', bg: '#e7f6ee', next: 'Approval email sent to the client. Create the payment request.' },\n  human_review: { label: 'Human review', color: '#9a5b00', bg: '#fff4e0', next: 'An adjuster must review the claim and approve or reject it.' },\n  fraud_investigation: { label: 'Fraud investigation', color: '#b42318', bg: '#fdecea', next: 'Open an investigation ticket. The client was NOT told about the suspicion.' },\n  rejected: { label: 'Rejected', color: '#475467', bg: '#eef0f3', next: 'Nothing to do: the claim was rejected at validation, before any AI call.' },\n};\nconst route = ROUTES[r.route] ? r.route : 'human_review';\nconst R = ROUTES[route];\nconst fraud = route === 'fraud_investigation';\n// What the client sees: a fraud case shows as a review\nconst C = fraud ? ROUTES.human_review : R;\n\n// ---------- shared email layout (inline styles: email clients ignore <style>) ----------\nconst FONT = \"font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1d2939;\";\nconst h3 = t => `<h3 style=\"margin:22px 0 8px;font-size:15px;color:#101828\">${t}</h3>`;\nconst p = t => `<p style=\"margin:0 0 10px;font-size:14px;line-height:1.6\">${t}</p>`;\nconst ul = xs => `<ul style=\"margin:0 0 10px;padding-left:20px;font-size:14px;line-height:1.6\">${xs.map(x => `<li>${x}</li>`).join('')}</ul>`;\nconst badge = (x, text) => `<span style=\"display:inline-block;background:${x.bg};color:${x.color};font-weight:600;font-size:13px;padding:4px 12px;border-radius:999px\">${text || x.label}</span>`;\nconst layout = (title, body) => `<div style=\"${FONT}background:#f2f4f7;padding:24px 12px\">\n  <div style=\"max-width:640px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e4e7ec\">\n    <div style=\"background:#0b1f44;padding:18px 28px;color:#ffffff;font-size:16px;font-weight:600;letter-spacing:.3px\">${esc(SETTINGS.company)}</div>\n    <div style=\"padding:26px 28px\">${title}${body}</div>\n    <div style=\"padding:14px 28px;background:#f9fafb;color:#667085;font-size:12px\">Claim reference ${esc(r.claim_id)} · processed by ClaimShield AI</div>\n  </div></div>`;\n\n// ---------- What the policy says about this case (from the RAG agent) ----------\nconst ragText = String(rag.explanation || '').replace(/^\\s*(COVERED|EXCLUDED|REQUIRES_REVIEW|NOT COVERED)\\b[\\s:.,-]*/i, '').trim();\nconst COVERAGE = {\n  COVERED: 'Your policy covers this damage.',\n  EXCLUDED: 'Your policy does not seem to cover this damage.',\n  REQUIRES_REVIEW: 'Whether your policy covers this damage will be confirmed by an adjuster.',\n};\nconst policyBlock = rag.ok\n  ? h3('What your policy says about your case')\n    + `<div style=\"background:#f5f8ff;border-left:4px solid #3b5bdb;border-radius:8px;padding:12px 16px;margin-bottom:10px\">`\n    + p(`<b>${esc(COVERAGE[rag.coverage_status] || COVERAGE.REQUIRES_REVIEW)}</b>`)\n    + (ragText ? p(esc(ragText)) : '')\n    + (rag.cited_clauses?.length ? `<p style=\"margin:0;font-size:12px;color:#475467\">Policy references: ${esc(rag.cited_clauses.join(', '))}</p>` : '')\n    + `</div>`\n  : '';\n\n// ---------- Client reasons, in words that never mention fraud ----------\nfunction clientReasons() {\n  if (route === 'rejected') return r.route_reasons;\n  if (route === 'auto_approve') {\n    return ['We checked your photos, your invoice, the circumstances of the accident and your policy, and the claim can be approved automatically (amount within our automatic approval limit).'];\n  }\n  if (fraud) return ['Some details of your claim need to be checked by one of our adjusters.'];\n  const out = [];\n  for (const reason of r.route_reasons || []) {\n    if (/auto-approval limit/.test(reason)) out.push(`The repair amount (${money(r.claimed_amount)}) is above what we can approve automatically.`);\n    else if (/Amount unknown/.test(reason)) out.push('We could not read the total amount on your invoice.');\n    else if (/Coverage result is (\\w+)/.test(reason)) {\n      const s = /Coverage result is (\\w+)/.exec(reason)[1];\n      out.push(s === 'EXCLUDED' ? 'Your policy may not cover this damage (see below).' : 'Whether your policy covers this case must be confirmed by an adjuster.');\n    } else if (/Missing agent results: (.*)/.test(reason)) {\n      const names = { visual: 'analyse your photos', invoice: 'read your invoice', policy_rag: 'check your policy', plausibility: 'check the circumstances of the accident' };\n      for (const m of /Missing agent results: (.*)/.exec(reason)[1].split(', ')) out.push(`We could not ${names[m] || m} automatically.`);\n    } else if (/Risk score/.test(reason) || /LLM/.test(reason)) out.push('Some details of your claim need to be checked by a person.');\n  }\n  const unique = [...new Set(out)];\n  return unique.length ? unique : ['Your claim needs a manual check.'];\n}\n\nlet clientSubject, clientIntro;\nif (route === 'auto_approve') {\n  clientSubject = `Your claim ${r.claim_id} is approved`;\n  clientIntro = p(`Good news: your claim for the accident of ${esc(when)} is <b>approved</b>.`)\n    + p(`Repair invoice: <b>${money(r.claimed_amount)}</b>. The deductible of your policy applies (see below); our payment team will confirm the amount paid.`);\n} else if (route === 'rejected') {\n  clientSubject = `Your claim ${r.claim_id} could not be accepted`;\n  clientIntro = p(`We could not accept your claim for the accident of ${esc(when)}.`);\n} else {\n  clientSubject = `Your claim ${r.claim_id} is being reviewed`;\n  clientIntro = p(`We have received your claim for the accident of ${esc(when)}. One of our adjusters is reviewing it and will contact you within 2 working days.`);\n}\nconst clientHtml = layout(\n  `<div style=\"margin-bottom:14px\">${badge(C, route === 'auto_approve' ? 'Approved' : route === 'rejected' ? 'Not accepted' : 'Under review')}</div>`,\n  p(`Hello${firstName ? ` ${esc(firstName)}` : ''},`) + clientIntro\n  + h3('Why') + ul(clientReasons().map(esc))\n  + (!fraud && route !== 'rejected' ? policyBlock : '')\n  + p(`If you have any question, reply to this email and quote your claim reference <b>${esc(r.claim_id)}</b>.`)\n  + p(`Kind regards,<br>${esc(SETTINGS.company)}`));\n\n// ---------- Insurer message: everything ----------\nconst pc = a.photo_checks;\nconst row = (name, html) => `<tr><td style=\"padding:10px 12px;vertical-align:top;color:#475467;font-size:13px;white-space:nowrap;border-top:1px solid #eaecf0\">${name}</td><td style=\"padding:10px 12px;font-size:13px;line-height:1.55;border-top:1px solid #eaecf0\">${html}</td></tr>`;\nconst failedText = x => `<span style=\"color:#b42318\">failed: ${esc(x?.error)}</span>`;\nconst pl = a.plausibility || {};\nconst insurerHtml = layout(\n  `<div style=\"margin-bottom:14px\">${badge(R)}${r.risk_score != null ? `<span style=\"margin-left:12px;font-size:14px\">Risk score <b style=\"font-size:18px\">${r.risk_score}</b>/100 <span style=\"color:#667085\">(rules ${r.rule_score}/60 + AI ${r.llm_adjustment})</span></span>` : ''}</div>`,\n  p(`<b>Next action:</b> ${esc(R.next)}`)\n  + h3('Why') + ul((r.route_reasons || []).map(esc))\n  + h3('Warning signs (design rules, section 4.6)')\n  + ((r.warning_signs || []).length ? ul(r.warning_signs.map(s => `<b>${esc(s.code)}</b> (+${s.points}): ${esc(s.detail)}`)) : p('None'))\n  + (r.justification ? p(`<b>AI risk assessment:</b> ${esc(r.justification)}`) : '')\n  + (route === 'rejected' ? '' : h3('What each agent found') + `<table style=\"border-collapse:collapse;width:100%\">\n    ${row('Photos<br><small>Visual agent</small>', a.visual?.ok ? `${esc(a.visual.accident_description)}<br><span style=\"color:#667085\">Severity ${esc(a.visual.severity)}/5 · damaged: ${esc((a.visual.damaged_parts || []).join(', '))}</span>` : failedText(a.visual))}\n    ${row('Photo checks', pc ? `${pc.photos_checked} photo(s) · ${pc.photo_reused ? `<b style=\"color:#b42318\">reused from ${esc(pc.reused_from_claims.join(', '))}</b>` : 'none reused'} · dates: ${esc(pc.photo_taken_dates.join(', ') || 'none in the files')}` : 'not checked')}\n    ${row('Invoice<br><small>OCR agent</small>', a.invoice?.ok ? esc(a.invoice.summary) : failedText(a.invoice))}\n    ${row('Circumstances<br><small>Plausibility agent</small>', pl.ok ? `${esc(pl.summary)}${(pl.warning_signs || []).length ? ul(pl.warning_signs.map(s => `${esc(s.code)} (+${s.points}, ${esc(s.confidence)}): ${esc(s.evidence)}`)) : ''}` : failedText(pl))}\n    ${row('Policy<br><small>RAG agent</small>', rag.ok ? `<b>${esc(rag.coverage_status)}</b> ${esc((rag.cited_clauses || []).join(', '))}<br>${esc(ragText)}` : failedText(rag))}\n  </table>`)\n  + h3('Claim')\n  + p(`${esc(r.client_name)} · ${esc(r.client_email)}${r.client_phone ? ` · ${esc(r.client_phone)}` : ''}<br>Accident on ${esc(when)}${where ? `, ${esc(where)}` : ''}${mapLink}<br>Amount: ${money(r.claimed_amount)}`)\n  + p(`<i>\"${esc(r.description)}\"</i>`));\n\nreturn [{\n  json: {\n    ...r,\n    client: { to: r.client_email, subject: clientSubject, html: clientHtml },\n    insurer: {\n      to: SETTINGS.insurer_email,\n      subject: `[ClaimShield] ${r.claim_id}: ${R.label}${r.risk_score != null ? `, risk ${r.risk_score}/100` : ''}`,\n      html: insurerHtml,\n    },\n    from_email: SETTINGS.from_email,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7264,
+        224
+      ],
+      "id": "15ce40e1-7b23-4341-b3ec-da68b35dc328",
+      "name": "Write Messages"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Write Messages').first().json.from_email }}",
+        "toEmail": "={{ $('Write Messages').first().json.client.to }}",
+        "subject": "={{ $('Write Messages').first().json.client.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $('Write Messages').first().json.client.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        7504,
+        224
+      ],
+      "id": "b9be42bf-943b-48c2-949e-1ed1acf15feb",
+      "name": "Email to Client",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Write Messages').first().json.from_email }}",
+        "toEmail": "={{ $('Write Messages').first().json.insurer.to }}",
+        "subject": "={{ $('Write Messages').first().json.insurer.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $('Write Messages').first().json.insurer.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        7744,
+        224
+      ],
+      "id": "1695297a-6a70-4919-b387-89055a489e98",
+      "name": "Email to Insurer",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appZtl8F9FIRb9jo7",
+          "mode": "list",
+          "cachedResultName": "ClaimShield",
+          "cachedResultUrl": "https://airtable.com/appZtl8F9FIRb9jo7"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblz4EgeHgNk1kThj",
+          "mode": "list",
+          "cachedResultName": "Claims",
+          "cachedResultUrl": "https://airtable.com/appZtl8F9FIRb9jo7/tblz4EgeHgNk1kThj"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "claim_id": "={{ $('Write Messages').first().json.claim_id }}",
+            "incident_date": "={{ $('Write Messages').first().json.incident_date }}",
+            "claimed_amount": "={{ $('Write Messages').first().json.claimed_amount }}",
+            "status": "={{ $('Write Messages').first().json.route }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "claim_id",
+              "displayName": "claim_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "incident_date",
+              "displayName": "incident_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "claimed_amount",
+              "displayName": "claimed_amount",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        7984,
+        224
+      ],
+      "id": "c3116971-dc5e-4806-9f60-337896d62eab",
+      "name": "Save Claim To Airtable",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "WStSocW5WEVyZHk7",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// The page the client sees after submitting the form. For the demo it also shows the insurer message\n// and whether each email went out.\nconst m = $('Write Messages').first().json;\n// A sent email returns the mail server's answer (messageId, accepted). When sending fails (for example\n// no SMTP credential yet) the node passes the message through instead, so the page says \"not sent\".\nconst sent = name => {\n  const out = $(name).first().json;\n  return out.messageId || out.accepted\n    ? '<span class=\"pill ok\">Email sent</span>'\n    : '<span class=\"pill ko\">Email not sent: add an SMTP credential to this Email node</span>';\n};\nconst card = (title, to, subject, status, html) => `\n  <section class=\"msg\">\n    <div class=\"meta\"><span class=\"who\">${title}</span><span class=\"to\">to ${to || '?'}</span>${status}</div>\n    <div class=\"subject\">${subject}</div>\n    <div class=\"body\">${html}</div>\n  </section>`;\nconst html = `<style>\n  body{background:#eef1f6;margin:0}\n  .cs{max-width:760px;margin:0 auto;padding:28px 16px 48px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1d2939;text-align:left}\n  .cs .top{display:flex;align-items:center;gap:12px;margin-bottom:6px}\n  .cs .logo{width:40px;height:40px;border-radius:10px;background:#0b1f44;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}\n  .cs h1{font-size:22px;margin:0}\n  .cs .lead{color:#475467;font-size:14px;margin:4px 0 20px}\n  .cs .msg{background:#fff;border:1px solid #e4e7ec;border-radius:14px;box-shadow:0 6px 24px rgba(16,24,40,.06);margin:18px 0;overflow:hidden}\n  .cs .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:14px 18px;border-bottom:1px solid #eaecf0;background:#f9fafb;font-size:13px}\n  .cs .who{font-weight:600}\n  .cs .to{color:#667085}\n  .cs .pill{margin-left:auto;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}\n  .cs .pill.ok{background:#e7f6ee;color:#0f7b4a}\n  .cs .pill.ko{background:#fdecea;color:#b42318}\n  .cs .subject{padding:14px 18px 0;font-weight:600;font-size:15px}\n  .cs .body > div{background:transparent !important;padding:12px 6px !important}\n</style>\n<div class=\"cs\">\n  <div class=\"top\"><div class=\"logo\">CS</div><h1>Claim ${m.claim_id} received</h1></div>\n  <p class=\"lead\">Thank you${m.client_name ? `, ${String(m.client_name).replace(/[<>&]/g, '')}` : ''}. Here is the answer we sent to you, and (demo view) the message sent to the insurance team.</p>\n  ${card('Message to the client', m.client.to, m.client.subject, sent('Email to Client'), m.client.html)}\n  ${card('Message to the insurance team', m.insurer.to, m.insurer.subject, sent('Email to Insurer'), m.insurer.html)}\n</div>`;\nreturn [{ json: { html } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8224,
+        224
+      ],
+      "id": "d653175b-8ba8-4deb-ad27-b0bcadef782c",
+      "name": "Result Page Content"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $('Result Page Content').first().json.html }}",
+        "options": {
+          "formTitle": "ClaimShield - your claim",
+          "customCss": "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');\n:root {\n  --font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\n  --font-weight-normal: 400;\n  --font-weight-bold: 600;\n  --font-size-body: 13px;\n  --font-size-label: 14px;\n  --font-size-input: 15px;\n  --font-size-header: 26px;\n  --font-size-paragraph: 14px;\n  --font-size-subheader: 15px;\n  --color-background: #eef1f6;\n  --color-card-bg: #ffffff;\n  --color-card-border: #e4e7ec;\n  --color-card-shadow: rgba(16, 24, 40, 0.08);\n  --color-header: #0b1f44;\n  --color-header-subtext: #475467;\n  --color-label: #344054;\n  --color-input-border: #d0d5dd;\n  --color-input-text: #101828;\n  --color-focus-border: #3b5bdb;\n  --color-submit-btn-bg: #0b1f44;\n  --color-submit-btn-text: #ffffff;\n  --color-required: #d92d20;\n  --color-html-text: #475467;\n  --color-link: #667085;\n  --border-radius-card: 16px;\n  --border-radius-input: 10px;\n  --card-border-radius: 16px;\n  --padding-container-top: 40px;\n  --padding-card: 32px;\n  --card-padding: 32px;\n  --padding-form-input: 12px 14px;\n  --container-width: 640px;\n  --submit-btn-height: 52px;\n  --box-shadow-card: 0 12px 32px 0 var(--color-card-shadow);\n}\nbody { background: linear-gradient(180deg, #0b1f44 0, #0b1f44 220px, var(--color-background) 220px) no-repeat, var(--color-background); }\n.container { max-width: calc(100vw - 32px); }\n.form-header h1 { font-weight: 700; letter-spacing: -0.3px; }\n.form-header p { line-height: 1.6; }\n.form-group { margin-bottom: 18px; }\n.form-label { font-weight: 500; }\n.form-input, input, textarea, select { transition: border-color .15s, box-shadow .15s; }\n.form-input:focus, input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 4px rgba(59, 91, 219, 0.15); outline: none; }\ntextarea { min-height: 110px; }\n.html h3 { margin: 26px 0 4px; padding-top: 18px; border-top: 1px solid #eaecf0; color: #0b1f44; font-size: 16px; font-weight: 600; }\n.html h3.first { border-top: none; padding-top: 0; margin-top: 4px; }\n.html p { margin: 0 0 4px; color: #667085; font-size: 13px; }\nbutton[type='submit'], #submit-btn { border-radius: 12px; font-weight: 600; font-size: 15px; letter-spacing: .2px; transition: transform .1s, box-shadow .15s; }\nbutton[type='submit']:hover, #submit-btn:hover { box-shadow: 0 8px 20px rgba(11, 31, 68, .25); transform: translateY(-1px); }\ntextarea, input, select { font-family: var(--font-family); }\n.form-group.html h3, .html h3 { font-weight: 600; color: #0b1f44; }\n"
+        }
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        8464,
+        224
+      ],
+      "id": "4d9843dd-9da7-4a4b-bb4c-10d87a12de46",
+      "name": "Result Page",
+      "webhookId": "6e4dbe10-f455-41f0-99d8-b471f66c63d6"
+    },
+    {
+      "parameters": {
+        "content": "## 3. Dispatch to the agents\nImages → Visual Inspection · Invoice → OCR · Description → Policy RAG · Date, time, address and description from the form → Incident Plausibility.\nEach agent is its own workflow; an agent that fails is marked missing and the claim goes to a human.",
+        "width": 1700,
+        "height": 1150,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4048,
+        -420
+      ],
+      "id": "d48aa765-e412-436f-a1c2-93564e7cefea",
+      "name": "Step 3 note"
+    },
+    {
+      "parameters": {
+        "content": "## 4. Fraud score  →  5. Messages\nRule Score uses the design rules (section 4.6); Gemini adds up to 40 points with a written reason.\n**Write Messages**: set the insurance team email at the top. Emails need an SMTP credential on the two Email nodes; without it the claim still finishes and the messages show on the result page.",
+        "width": 2760,
+        "height": 860,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5940,
+        -200
+      ],
+      "id": "e7540491-f61d-47d0-be9b-c9cf8cf3f710",
+      "name": "Step 4-5 note"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gives every invoiced part its code from the shared parts vocabulary (front_bumper, taillight_left...),\n// the same codes the Visual Inspection and Incident Plausibility agents use, so parts can be compared.\n// Invoices are free text, often in French: \"Pare-choc AR\", \"Phare avant gauche\", \"Rétroviseur D\".\n// A part whose side or position is not written stays without a code and is not compared.\nconst inv = $input.first().json;\nif (inv.error) return [{ json: inv }];\n\nconst norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();\nconst has = (t, re) => re.test(` ${t} `);\nconst LEFT = / (g|gauche|left|lh|gche) /, RIGHT = / (d|dr|droit|droite|right|rh|dte) /;\nconst FRONT = / (av|avant|front|fr|anterieur) /, REAR = / (ar|arr|arriere|rear|back|posterieur) /;\nconst side = t => (has(t, LEFT) ? 'left' : has(t, RIGHT) ? 'right' : null);\n\nfunction code(text) {\n  const t = norm(text);\n  if (!t) return null;\n  const s = side(t);\n  if (has(t, / pare ?brise | windshield | windscreen /)) return 'windshield';\n  if (has(t, / lunette | rear window /)) return 'rear_window';\n  if (has(t, / (feu|feux|stop|catadioptre) (ar|arr|arriere) | taillight | tail light | rear light | feu arriere | feux arriere /)) return s && `taillight_${s}`;\n  if (has(t, / phare | optique | projecteur | headlight | headlamp /)) return s && `headlight_${s}`;\n  if (has(t, / pare ?chocs? | bumper | bouclier /)) return has(t, REAR) ? 'rear_bumper' : has(t, FRONT) ? 'front_bumper' : null;\n  if (has(t, / capot | hood | bonnet /)) return 'hood';\n  if (has(t, / coffre | hayon | trunk | tailgate | boot /)) return 'trunk_lid_tailgate';\n  if (has(t, / calandre | grille /)) return 'front_grille';\n  if (has(t, / radiateur | radiator /)) return 'radiator';\n  if (has(t, / custode | quarter /) || (has(t, / aile | fender | wing /) && has(t, REAR))) return s && `quarter_panel_rear_${s}`;\n  if (has(t, / aile | garde ?boue | fender | wing /)) return s && `fender_front_${s}`;\n  if (has(t, / portes? | portiere | door /)) {\n    const pos = has(t, REAR) ? 'rear' : has(t, FRONT) ? 'front' : null;\n    return pos && s && `door_${pos}_${s}`;\n  }\n  if (has(t, / retro | retroviseur | mirror /)) return s && `mirror_${s}`;\n  if (has(t, / vitre | glace | side window /)) return 'side_window';\n  if (has(t, / pavillon | toit | roof /)) return 'roof';\n  if (has(t, / jante | rim | enjoliveur /)) return 'wheel_rim';\n  if (has(t, / pneu | tyre | tire /)) return 'tire';\n  if (has(t, / amortisseur | suspension | triangle | rotule | shock absorber /)) return 'suspension';\n  if (has(t, / airbag /)) return 'airbag';\n  if (has(t, / moteur | engine | alternateur | courroie | carter /)) return 'engine_component';\n  return null;\n}\n\nconst line_items = (inv.line_items || []).map(li => ({ ...li, part_code: li.type === 'part' ? code(li.part) : null }));\nreturn [{ json: { ...inv, line_items, part_codes: [...new Set(line_items.map(li => li.part_code).filter(Boolean))] } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5048,
+        208
+      ],
+      "id": "fabd4159-f0dd-44f2-a7f3-35dc56eb23ac",
+      "name": "Map Invoice Parts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input of the Incident Plausibility agent, taken from the claim form only: what happened,\n// when, and where (the pin on the map, or else the street, city, postal code and country typed).\n// The agent checks the story against the map and the weather at that place and time.\nconst { claim } = $('Prepare Claim').first().json;\nreturn [{\n  json: {\n    claim: {\n      claim_id: claim.claim_id,\n      incident_datetime: claim.incident_datetime,\n      incident_location: claim.incident_location,\n      incident_address: claim.location,\n      // The map pin, when the client placed one: the agent then uses it instead of the address.\n      incident_lat: claim.location.lat,\n      incident_lon: claim.location.lon,\n      description: claim.description,\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4088,
+        656
+      ],
+      "id": "e502f7d7-85be-4125-b953-d3236e2f8d52",
+      "name": "Send Accident Details"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "VeGTlxAhlxLRtI3N",
+          "mode": "list",
+          "cachedResultName": "ClaimShield - Incident Plausibility Agent (local fine-tuned)",
+          "cachedResultUrl": "/workflow/VeGTlxAhlxLRtI3N"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4328,
+        656
+      ],
+      "id": "bf37a6ea-ca6f-4938-a912-f51ca54deb6a",
+      "name": "Incident Plausibility Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "path": "claim",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e8a49bdc-de4f-49f4-b1f6-e39ff0a2cfb7",
+      "name": "Claim Page (with map)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -284
+      ],
+      "webhookId": "dbd14668-8cb2-401b-ae13-f7afdddc828c"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>ClaimShield - Declare a claim</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap\" rel=\"stylesheet\">\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\">\n<style>\n  :root { --navy:#0b1f44; --blue:#3b5bdb; --text:#101828; --muted:#667085; --label:#344054; --border:#d0d5dd; --bg:#eef1f6; --red:#d92d20; --green:#0f7b4a; }\n  * { box-sizing: border-box; }\n  body { margin:0; font-family:'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:var(--text);\n    background: linear-gradient(180deg, var(--navy) 0, var(--navy) 220px, var(--bg) 220px) no-repeat, var(--bg); }\n  .wrap { max-width:640px; margin:0 auto; padding:40px 16px 60px; }\n  .card { background:#fff; border:1px solid #e4e7ec; border-radius:16px; box-shadow:0 12px 32px rgba(16,24,40,.08); padding:32px; }\n  .brand { color:#c7d2fe; font-size:13px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; margin:0 0 8px; }\n  h1 { margin:0 0 8px; font-size:26px; font-weight:700; letter-spacing:-.3px; color:var(--navy); }\n  .intro { margin:0 0 8px; color:#475467; font-size:14px; line-height:1.6; }\n  h3 { margin:26px 0 12px; padding-top:18px; border-top:1px solid #eaecf0; color:var(--navy); font-size:16px; font-weight:600; }\n  h3.first { border-top:none; padding-top:0; margin-top:12px; }\n  .row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }\n  .field { margin-bottom:16px; }\n  label { display:block; font-size:14px; font-weight:500; color:var(--label); margin-bottom:6px; }\n  label .req { color:var(--red); margin-left:2px; }\n  input[type=text], input[type=email], input[type=date], input[type=time], select, textarea {\n    width:100%; font:inherit; font-size:15px; color:var(--text); padding:12px 14px; border:1px solid var(--border);\n    border-radius:10px; background:#fff; transition:border-color .15s, box-shadow .15s; }\n  textarea { min-height:110px; resize:vertical; }\n  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 4px rgba(59,91,219,.15); }\n  input[type=file] { width:100%; font:inherit; font-size:14px; padding:10px; border:1px dashed var(--border); border-radius:10px; background:#f9fafb; }\n  .hint { font-size:12.5px; color:var(--muted); margin-top:5px; }\n  .error { font-size:12.5px; color:var(--red); margin-top:5px; display:none; }\n  .invalid input, .invalid select, .invalid textarea { border-color:var(--red); }\n  .invalid .error { display:block; }\n  .map-box { border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; gap:12px; align-items:center; background:#f8faff; }\n  .map-box .icon { width:40px; height:40px; flex:none; border-radius:10px; background:#e0e7ff; display:grid; place-items:center; font-size:20px; }\n  .map-box .txt { flex:1; min-width:0; font-size:13.5px; color:#475467; }\n  .map-box .txt b { display:block; color:var(--text); font-weight:600; font-size:14px; margin-bottom:2px; }\n  .map-box.pinned { background:#ecfdf3; border-color:#abefc6; }\n  .map-box.pinned .icon { background:#d1fadf; }\n  .btn { font:inherit; font-weight:600; font-size:14px; border-radius:10px; padding:10px 14px; cursor:pointer; border:1px solid var(--border); background:#fff; color:var(--navy); white-space:nowrap; }\n  .btn:hover { background:#f2f4f7; }\n  .btn.primary { background:var(--navy); color:#fff; border-color:var(--navy); }\n  .btn.primary:hover { background:#14306a; }\n  .btn:disabled { opacity:.5; cursor:not-allowed; }\n  .submit { width:100%; height:52px; margin-top:12px; border:none; border-radius:12px; background:var(--navy); color:#fff; font:inherit; font-weight:600; font-size:15px; cursor:pointer; transition:transform .1s, box-shadow .15s; }\n  .submit:hover { box-shadow:0 8px 20px rgba(11,31,68,.25); transform:translateY(-1px); }\n  .submit:disabled { opacity:.6; cursor:wait; transform:none; box-shadow:none; }\n  .status { display:none; text-align:center; padding:28px 8px; }\n  .spinner { width:42px; height:42px; border:4px solid #e0e7ff; border-top-color:var(--blue); border-radius:50%; margin:0 auto 18px; animation:spin 1s linear infinite; }\n  @keyframes spin { to { transform:rotate(360deg); } }\n  .status h2 { margin:0 0 8px; font-size:20px; color:var(--navy); }\n  .status p { margin:0; color:var(--muted); font-size:14px; line-height:1.6; }\n  .alt { text-align:center; font-size:12.5px; color:var(--muted); margin-top:18px; }\n  .alt a { color:var(--muted); }\n  /* Map pop-up */\n  .modal { position:fixed; inset:0; background:rgba(16,24,40,.55); display:none; align-items:center; justify-content:center; padding:16px; z-index:1000; }\n  .modal.open { display:flex; }\n  .sheet { background:#fff; border-radius:16px; width:100%; max-width:860px; max-height:calc(100vh - 32px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 48px rgba(16,24,40,.25); }\n  .sheet-head { padding:16px 20px; border-bottom:1px solid #eaecf0; display:flex; align-items:center; gap:12px; }\n  .sheet-head h2 { margin:0; font-size:17px; color:var(--navy); flex:1; }\n  .x { border:none; background:none; font-size:24px; line-height:1; cursor:pointer; color:var(--muted); padding:4px 8px; }\n  .search { padding:12px 20px; display:flex; gap:8px; position:relative; }\n  .search input { flex:1; }\n  .results { position:absolute; left:20px; right:20px; top:62px; background:#fff; border:1px solid #e4e7ec; border-radius:10px; box-shadow:0 12px 24px rgba(16,24,40,.12); z-index:1001; display:none; max-height:240px; overflow:auto; }\n  .results div { padding:10px 14px; font-size:13.5px; cursor:pointer; border-bottom:1px solid #f2f4f7; }\n  .results div:hover { background:#f5f8ff; }\n  #map { height:min(460px, calc(100vh - 290px)); min-height:260px; margin:0 20px; border-radius:12px; border:1px solid #e4e7ec; }\n  .sheet-foot { padding:14px 20px; display:flex; align-items:center; gap:12px; }\n  .sheet-foot .where { flex:1; font-size:13px; color:#475467; min-width:0; }\n  @media (max-width:560px) { .row { grid-template-columns:1fr; } .card { padding:22px; } .map-box { flex-wrap:wrap; } }\n</style>\n</head>\n<body>\n<div class=\"wrap\">\n  <p class=\"brand\">ClaimShield Insurance</p>\n  <div class=\"card\">\n    <form id=\"claim\" novalidate>\n      <h1>Declare a car damage claim</h1>\n      <p class=\"intro\">Tell us what happened, pin the place on the map and attach your photos and the repair invoice. Our assessment runs in a few minutes and the answer appears on this page and in your mailbox.</p>\n\n      <h3 class=\"first\">Your details</h3>\n      <div class=\"field\" data-req><label for=\"full_name\">Full name<span class=\"req\">*</span></label>\n        <input type=\"text\" id=\"full_name\" placeholder=\"e.g. Amine Ben Salah\" autocomplete=\"name\"><div class=\"error\">Please enter your name.</div></div>\n      <div class=\"row\">\n        <div class=\"field\" data-req data-type=\"email\"><label for=\"client_email\">Email<span class=\"req\">*</span></label>\n          <input type=\"email\" id=\"client_email\" placeholder=\"you@example.com\" autocomplete=\"email\"><div class=\"error\">Please enter a valid email.</div></div>\n        <div class=\"field\"><label for=\"phone\">Phone (optional)</label>\n          <input type=\"text\" id=\"phone\" placeholder=\"e.g. +216 20 123 456\" autocomplete=\"tel\"></div>\n      </div>\n\n      <h3>The accident</h3>\n      <div class=\"row\">\n        <div class=\"field\" data-req><label for=\"incident_date\">Date<span class=\"req\">*</span></label>\n          <input type=\"date\" id=\"incident_date\"><div class=\"error\">Please choose the date.</div></div>\n        <div class=\"field\" data-req><label for=\"incident_time\">Time<span class=\"req\">*</span></label>\n          <input type=\"time\" id=\"incident_time\"><div class=\"error\">Please enter the time.</div></div>\n      </div>\n\n      <div class=\"field\">\n        <label>Exact location</label>\n        <div class=\"map-box\" id=\"mapBox\">\n          <div class=\"icon\">📍</div>\n          <div class=\"txt\" id=\"mapTxt\"><b>Pin the place on the map</b>Recommended: it lets us check the road and the weather exactly where it happened. The address below fills in by itself.</div>\n          <button type=\"button\" class=\"btn primary\" id=\"openMap\">Open the map</button>\n        </div>\n      </div>\n\n      <div class=\"field\" data-req><label for=\"street\">Street and number<span class=\"req\">*</span></label>\n        <input type=\"text\" id=\"street\" placeholder=\"e.g. 12 Avenue Habib Bourguiba\"><div class=\"error\">Please enter the street.</div></div>\n      <div class=\"row\">\n        <div class=\"field\" data-req><label for=\"city\">City<span class=\"req\">*</span></label>\n          <input type=\"text\" id=\"city\" placeholder=\"e.g. Tunis\"><div class=\"error\">Please enter the city.</div></div>\n        <div class=\"field\"><label for=\"postal_code\">Postal code (optional)</label>\n          <input type=\"text\" id=\"postal_code\" placeholder=\"e.g. 1001\"></div>\n      </div>\n      <div class=\"field\" data-req><label for=\"country\">Country<span class=\"req\">*</span></label>\n        <select id=\"country\"><option>Tunisia</option><option>Algeria</option><option>Morocco</option><option>France</option><option>Other</option></select></div>\n\n      <div class=\"field\" data-req><label for=\"description\">What happened?<span class=\"req\">*</span></label>\n        <textarea id=\"description\" placeholder=\"e.g. I was stopped at a red light when the car behind me hit my rear bumper.\"></textarea>\n        <div class=\"error\">Please describe what happened.</div></div>\n\n      <h3>Documents</h3>\n      <div class=\"field\" data-req data-type=\"photos\"><label for=\"photos\">Photos of the damage (1 to 8, JPG or PNG)<span class=\"req\">*</span></label>\n        <input type=\"file\" id=\"photos\" accept=\".jpg,.jpeg,.png\" multiple><div class=\"error\">Please add 1 to 8 photos.</div></div>\n      <div class=\"field\" data-req data-type=\"file\"><label for=\"invoice\">Repair invoice (PDF)<span class=\"req\">*</span></label>\n        <input type=\"file\" id=\"invoice\" accept=\".pdf\"><div class=\"error\">Please add the invoice.</div></div>\n\n      <button type=\"submit\" class=\"submit\" id=\"submitBtn\">Submit my claim</button>\n      <p class=\"error\" id=\"submitError\" style=\"text-align:center\"></p>\n    </form>\n\n    <div class=\"status\" id=\"status\">\n      <div class=\"spinner\"></div>\n      <h2>We are assessing your claim</h2>\n      <p>Our agents are checking your photos, your invoice, the place and time of the accident and your policy.<br>This takes a few minutes. Please keep this page open.</p>\n    </div>\n  </div>\n  <p class=\"alt\">The map does not load? <a href=\"/form/claimshield\">Use the form without a map</a>.</p>\n</div>\n\n<div class=\"modal\" id=\"modal\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"mapTitle\">\n  <div class=\"sheet\">\n    <div class=\"sheet-head\"><h2 id=\"mapTitle\">Where did the accident happen?</h2><button type=\"button\" class=\"x\" id=\"closeMap\" aria-label=\"Close\">×</button></div>\n    <div class=\"search\">\n      <input type=\"text\" id=\"q\" placeholder=\"Search a street or a place, e.g. Avenue Habib Bourguiba, Tunis\">\n      <button type=\"button\" class=\"btn\" id=\"searchBtn\">Search</button>\n      <div class=\"results\" id=\"results\"></div>\n    </div>\n    <div id=\"map\"></div>\n    <div class=\"sheet-foot\">\n      <div class=\"where\" id=\"where\">Click on the map to drop the pin, then drag it to the exact spot.</div>\n      <button type=\"button\" class=\"btn\" id=\"cancelMap\">Cancel</button>\n      <button type=\"button\" class=\"btn primary\" id=\"usePin\" disabled>Use this location</button>\n    </div>\n  </div>\n</div>\n\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script>\n(function () {\n  // The claim is sent to the n8n form of workflow 04 (same fields, same flow, same result page).\n  var FORM_URL = '/form/claimshield';\n  var FIELDS = { full_name: 1, client_email: 2, phone: 3, incident_date: 5, incident_time: 6, street: 7, city: 8,\n    postal_code: 9, country: 10, description: 11, photos: 13, invoice: 14, incident_lat: 15, incident_lon: 16 };\n  var NOMINATIM = 'https://nominatim.openstreetmap.org';\n  var COUNTRIES = ['Tunisia', 'Algeria', 'Morocco', 'France'];\n  var $ = function (id) { return document.getElementById(id); };\n  var pin = null;        // the confirmed location {lat, lon}\n  var draft = null;      // the location being chosen in the pop-up\n  var map = null, marker = null;\n\n  // ---------- Map pop-up ----------\n  function openMap() {\n    $('modal').classList.add('open');\n    if (typeof L === 'undefined') { $('where').textContent = 'The map could not be loaded (no internet?). Type the address below instead.'; return; }\n    if (!map) {\n      map = L.map('map').setView([36.8065, 10.1815], 12);\n      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {\n        maxZoom: 19, subdomains: 'abcd',\n        attribution: '&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> &copy; <a href=\"https://carto.com/\">CARTO</a>'\n      }).addTo(map);\n      map.on('click', function (e) { setDraft(e.latlng.lat, e.latlng.lng); });\n    }\n    setTimeout(function () { map.invalidateSize(); if (pin) { map.setView([pin.lat, pin.lon], 17); setDraft(pin.lat, pin.lon); } }, 50);\n    $('q').focus();\n  }\n  function closeMap() { $('modal').classList.remove('open'); $('results').style.display = 'none'; }\n  function setDraft(lat, lon) {\n    draft = { lat: lat, lon: lon };\n    if (!marker) {\n      marker = L.marker([lat, lon], { draggable: true }).addTo(map);\n      marker.on('dragend', function () { var p = marker.getLatLng(); setDraft(p.lat, p.lng); });\n    } else marker.setLatLng([lat, lon]);\n    $('usePin').disabled = false;\n    $('where').textContent = 'Pin at ' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '. Looking up the address…';\n    reverse(lat, lon).then(function (a) {\n      if (draft && draft.lat === lat && draft.lon === lon) { draft.address = a; $('where').textContent = a ? a.label : 'Pin at ' + lat.toFixed(5) + ', ' + lon.toFixed(5); }\n    });\n  }\n  function reverse(lat, lon) {\n    return fetch(NOMINATIM + '/reverse?format=jsonv2&zoom=18&addressdetails=1&accept-language=en&lat=' + lat + '&lon=' + lon)\n      .then(function (r) { return r.json(); })\n      .then(function (j) {\n        var a = j.address || {};\n        var road = a.road || a.pedestrian || a.street || a.footway || a.neighbourhood || '';\n        return {\n          street: [a.house_number, road].filter(Boolean).join(' '),\n          city: a.city || a.town || a.village || a.municipality || a.suburb || a.county || '',\n          postal_code: a.postcode || '',\n          country: a.country || '',\n          label: j.display_name || ''\n        };\n      }).catch(function () { return null; });\n  }\n  function search() {\n    var q = $('q').value.trim(); if (!q) return;\n    $('results').innerHTML = '<div>Searching…</div>'; $('results').style.display = 'block';\n    fetch(NOMINATIM + '/search?format=jsonv2&limit=6&accept-language=en&q=' + encodeURIComponent(q))\n      .then(function (r) { return r.json(); })\n      .then(function (list) {\n        $('results').innerHTML = '';\n        if (!list.length) { $('results').innerHTML = '<div>No place found. Try a shorter search, or click on the map.</div>'; return; }\n        list.forEach(function (p) {\n          var d = document.createElement('div'); d.textContent = p.display_name;\n          d.onclick = function () { $('results').style.display = 'none'; map.setView([+p.lat, +p.lon], 17); setDraft(+p.lat, +p.lon); };\n          $('results').appendChild(d);\n        });\n      }).catch(function () { $('results').innerHTML = '<div>The search is not available. Click on the map instead.</div>'; });\n  }\n  function usePin() {\n    if (!draft) return;\n    pin = { lat: draft.lat, lon: draft.lon };\n    var a = draft.address;\n    if (a) {\n      if (a.street) $('street').value = a.street;\n      if (a.city) $('city').value = a.city;\n      if (a.postal_code) $('postal_code').value = a.postal_code;\n      $('country').value = COUNTRIES.indexOf(a.country) >= 0 ? a.country : 'Other';\n      ['street', 'city'].forEach(function (id) { $(id).closest('.field').classList.remove('invalid'); });\n    }\n    $('mapBox').classList.add('pinned');\n    $('mapTxt').innerHTML = '';\n    var b = document.createElement('b'); b.textContent = 'Location pinned';\n    $('mapTxt').appendChild(b);\n    $('mapTxt').appendChild(document.createTextNode((a && a.label ? a.label + ' · ' : '') + pin.lat.toFixed(5) + ', ' + pin.lon.toFixed(5)));\n    $('openMap').textContent = 'Change';\n    closeMap();\n  }\n  $('openMap').onclick = openMap;\n  $('closeMap').onclick = closeMap;\n  $('cancelMap').onclick = closeMap;\n  $('usePin').onclick = usePin;\n  $('searchBtn').onclick = search;\n  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); search(); } });\n  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMap(); });\n\n  // ---------- Validation ----------\n  function check() {\n    var ok = true;\n    document.querySelectorAll('[data-req]').forEach(function (f) {\n      var el = f.querySelector('input, select, textarea'), t = f.getAttribute('data-type'), good;\n      if (t === 'photos') good = el.files.length >= 1 && el.files.length <= 8;\n      else if (t === 'file') good = el.files.length === 1;\n      else if (t === 'email') good = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(el.value.trim());\n      else good = el.value.trim() !== '';\n      f.classList.toggle('invalid', !good);\n      if (!good && ok) { el.focus(); ok = false; }\n    });\n    return ok;\n  }\n  document.querySelectorAll('[data-req] input, [data-req] select, [data-req] textarea').forEach(function (el) {\n    el.addEventListener('input', function () { el.closest('.field').classList.remove('invalid'); });\n    el.addEventListener('change', function () { el.closest('.field').classList.remove('invalid'); });\n  });\n\n  // ---------- Submit to the n8n form, then wait for the result page ----------\n  $('claim').addEventListener('submit', function (e) {\n    e.preventDefault();\n    $('submitError').style.display = 'none';\n    if (!check()) return;\n    var fd = new FormData();\n    ['full_name', 'client_email', 'phone', 'incident_date', 'incident_time', 'street', 'city', 'postal_code', 'country', 'description']\n      .forEach(function (k) { fd.append('field-' + FIELDS[k], $(k).value.trim()); });\n    Array.prototype.forEach.call($('photos').files, function (f) { fd.append('field-' + FIELDS.photos, f, f.name); });\n    fd.append('field-' + FIELDS.invoice, $('invoice').files[0], $('invoice').files[0].name);\n    fd.append('field-' + FIELDS.incident_lat, pin ? pin.lat.toFixed(6) : '');\n    fd.append('field-' + FIELDS.incident_lon, pin ? pin.lon.toFixed(6) : '');\n    $('submitBtn').disabled = true; $('submitBtn').textContent = 'Sending…';\n    fetch(FORM_URL, { method: 'POST', body: fd })\n      .then(function (r) { return r.text(); })\n      .then(function (text) {\n        var j = {}; try { j = JSON.parse(text); } catch (err) {}\n        if (!j.formWaitingUrl) throw new Error(text.slice(0, 200) || 'no answer');\n        $('claim').style.display = 'none'; $('status').style.display = 'block';\n        wait(j.formWaitingUrl, 1000);\n      })\n      .catch(function (err) {\n        $('submitBtn').disabled = false; $('submitBtn').textContent = 'Submit my claim';\n        $('submitError').textContent = 'The claim could not be sent (' + err.message + '). Check that workflow 04 is published, then try again.';\n        $('submitError').style.display = 'block';\n      });\n  });\n  function wait(waitingUrl, interval) {\n    var u = new URL(waitingUrl, location.href);\n    u.pathname = u.pathname + '/n8n-execution-status';\n    fetch(u.toString()).then(function (r) { return r.text(); }).then(function (t) {\n      t = t.trim();\n      if (t === 'form-waiting' || t === 'success') { location.href = new URL(waitingUrl, location.href).toString(); return; }\n      if (['canceled', 'crashed', 'error', 'null'].indexOf(t) >= 0) {\n        $('status').innerHTML = '<h2>Something went wrong</h2><p>The assessment stopped before the end. Please try again, or open the execution of workflow 04 in n8n to see why.</p>';\n        return;\n      }\n      setTimeout(function () { wait(waitingUrl, Math.min(interval * 1.1, 5000)); }, interval);\n    }).catch(function () { setTimeout(function () { wait(waitingUrl, 3000); }, 3000); });\n  }\n})();\n</script>\n</body>\n</html>\n",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "828a884c-2775-4d74-bbee-a570f5c5ad1b",
+      "name": "Send Claim Page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        224,
+        -284
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Claim page with the map\nOpen **http://localhost:5678/webhook/claim**. It is the same form with a **map pop-up**: the client pins the exact place, and the street, city, postal code and country fill in by themselves.\nIt sends the claim to **Claim Form** below (with the pin in two hidden fields, `incident_lat` and `incident_lon`), so everything after is the same. The page itself is in **Send Claim Page**.",
+        "height": 220,
+        "width": 520,
+        "color": 5
+      },
+      "id": "82008e2b-ff58-4700-85e6-22942461a55a",
+      "name": "Map page note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -56,
+        -544
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Stage is decide?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Test Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Data": {
+      "main": [
+        [
+          {
+            "node": "Stage is decide?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage is decide?": {
+      "main": [
+        [
+          {
+            "node": "Rule Score",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Claim Checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule Score": {
+      "main": [
+        [
+          {
+            "node": "LLM Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Risk Assessment": {
+      "main": [
+        [
+          {
+            "node": "Decide Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "LLM Risk Assessment",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Photos": {
+      "main": [
+        [
+          {
+            "node": "Check Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Photo Hashes": {
+      "main": [
+        [
+          {
+            "node": "Photo Checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Photo Checks": {
+      "main": [
+        [
+          {
+            "node": "New photos to save?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New photos to save?": {
+      "main": [
+        [
+          {
+            "node": "One Row Per Photo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Row Per Photo": {
+      "main": [
+        [
+          {
+            "node": "Save Photo Hashes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Photo Hashes": {
+      "main": [
+        [
+          {
+            "node": "Validation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Form": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claim": {
+      "main": [
+        [
+          {
+            "node": "Read Photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Result": {
+      "main": [
+        [
+          {
+            "node": "From the form? (validation)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From the form? (validation)": {
+      "main": [
+        [
+          {
+            "node": "Claim valid?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim valid?": {
+      "main": [
+        [
+          {
+            "node": "Send Photos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Invoice File",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Description",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Accident Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejection Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Photos": {
+      "main": [
+        [
+          {
+            "node": "Visual Inspection Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visual Inspection Agent": {
+      "main": [
+        [
+          {
+            "node": "All Agents Answered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice File": {
+      "main": [
+        [
+          {
+            "node": "Save Invoice File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Invoice File": {
+      "main": [
+        [
+          {
+            "node": "Send Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Invoice": {
+      "main": [
+        [
+          {
+            "node": "Invoice OCR Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice OCR Agent": {
+      "main": [
+        [
+          {
+            "node": "Map Invoice Parts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Description": {
+      "main": [
+        [
+          {
+            "node": "Policy RAG Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy RAG Agent": {
+      "main": [
+        [
+          {
+            "node": "All Agents Answered",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "All Agents Answered": {
+      "main": [
+        [
+          {
+            "node": "Collect Agent Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Agent Results": {
+      "main": [
+        [
+          {
+            "node": "Rule Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Route": {
+      "main": [
+        [
+          {
+            "node": "From the form? (decision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From the form? (decision)": {
+      "main": [
+        [
+          {
+            "node": "Decision Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Record": {
+      "main": [
+        [
+          {
+            "node": "Write Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Record": {
+      "main": [
+        [
+          {
+            "node": "Write Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Messages": {
+      "main": [
+        [
+          {
+            "node": "Email to Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email to Client": {
+      "main": [
+        [
+          {
+            "node": "Email to Insurer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email to Insurer": {
+      "main": [
+        [
+          {
+            "node": "Save Claim To Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Claim To Airtable": {
+      "main": [
+        [
+          {
+            "node": "Result Page Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result Page Content": {
+      "main": [
+        [
+          {
+            "node": "Result Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Checks": {
+      "main": [
+        [
+          {
+            "node": "Find Photo Hashes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Invoice Parts": {
+      "main": [
+        [
+          {
+            "node": "All Agents Answered",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Incident Plausibility Agent": {
+      "main": [
+        [
+          {
+            "node": "All Agents Answered",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Send Accident Details": {
+      "main": [
+        [
+          {
+            "node": "Incident Plausibility Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Page (with map)": {
+      "main": [
+        [
+          {
+            "node": "Send Claim Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}

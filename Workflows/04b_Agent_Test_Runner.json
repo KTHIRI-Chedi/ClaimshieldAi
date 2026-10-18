@@ -1,0 +1,267 @@
+{
+  "id": "5Bx0h7iG7jwqnN2t",
+  "name": "04b_Agent_Test_Runner",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Agent test runner\n1. **Run Agent** must point to **04_Validation_Fraud_Decision_Agent**.\n2. Click **Execute workflow**. Tests run one by one with a short pause so the free AI isn't overloaded.\n3. Open **Check Results**, Table view. The first row says ALL PASSED or how many failed; each row explains its problem.\n\n**Seed Test Photo** puts test photo A in the *photo hashes* Data Table under the old claim CLM-H001, so V12 can check that a reused photo is caught.\nRe-run after every change to your agent.",
+        "height": 320,
+        "width": 460,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -300,
+        -420
+      ],
+      "id": "40182e2b-2f09-46ee-991f-f54ba6e03fa8",
+      "name": "About"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -300,
+        0
+      ],
+      "id": "19cc76b5-2c05-407d-9b2d-fead1e0ffba4",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "GPB9guZVkRCEAFdq",
+          "mode": "list",
+          "cachedResultName": "photo hashes",
+          "cachedResultUrl": "/projects/mk16DcOfDp4ziokc/datatables/GPB9guZVkRCEAFdq"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "hash",
+              "keyValue": "cc720b7514796915acb59bb1963c74abfcbde7c993cd9dc9db81e8d427575ae2"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hash": "cc720b7514796915acb59bb1963c74abfcbde7c993cd9dc9db81e8d427575ae2",
+            "claim_id": "CLM-H001",
+            "photo_key": "test_seed"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "hash",
+              "displayName": "hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "claim_id",
+              "displayName": "claim_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "photo_key",
+              "displayName": "photo_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        0
+      ],
+      "id": "40f821c0-8be9-4de0-8bf4-b99003cb8cd2",
+      "name": "Seed Test Photo"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Test claims for the Validation & Fraud Decision Agent.\n// Each case has an input (sent to the agent) and what we expect back.\n// Rule scores and warning signs are exact; routes that the LLM adjustment\n// could change list every acceptable route.\nconst claim = {\n  claim_id: 'TST-000',\n  incident_date: '2026-10-10',\n  incident_location: 'Tunis',\n  description: 'Rear-ended at a red light. Rear bumper and trunk lid damaged.',\n  claimed_amount: 1450,\n  photo_count: 3,\n  photo_taken_dates: ['2026-10-10', '2026-10-10', '2026-10-11'],\n  photo_reused: false,\n  has_invoice: true,\n};\nconst validation = { valid: true, reasons: [] };\nconst visual = {\n  damage_severity: 2, damaged_parts: ['pare-choc arriere', 'coffre'], impact_zone: 'arriere',\n  matches_description: true, mismatch_reason: '', pre_existing_damage_signs: false, pre_existing_reason: '',\n  same_vehicle_across_photos: true, suspicious_image_flags: [],\n};\nconst invoice = {\n  totals_match: true, total: 1450,\n  line_items: [\n    { part: 'Pare-choc arrière', type: 'part', quantity: 1, unit_price: 620 },\n    { part: 'Coffre', type: 'part', quantity: 1, unit_price: 480 },\n    { part: \"Main d'oeuvre\", type: 'labor', quantity: 5, unit_price: 70 },\n  ],\n};\nconst policy_rag = { coverage_status: 'COVERED', cited_clauses: ['Section 4.2'], reasoning: 'Collision damage is covered.', flagged_exclusions: [] };\n\n// Tiny test photos (16x16 JPEGs). A has EXIF date 2026-10-10 and is saved in the\n// \"photo hashes\" Data Table under the old claim CLM-H001 by \"Seed Test Photo\"; B is dated 2026-09-01;\n// C has no EXIF date. D (dated 2026-09-01) and E (no date) are only used by the tests,\n// so they are never reused by a real claim.\nconst PHOTO = {\n  A: '/9j/4AAQSkZJRgABAQAAAQABAAD/4QBoRXhpZgAATU0AKgAAAAgAAgEyAAIAAAAUAAAAJodpAAQAAAABAAAAOgAAAAAyMDI2OjEwOjEwIDE0OjMyOjAwAAABkAMAAgAAABQAAABMAAAAADIwMjY6MTA6MTAgMTQ6MzI6MDAA/9sAQwAGBAUGBQQGBgUGBwcGCAoQCgoJCQoUDg8MEBcUGBgXFBYWGh0lHxobIxwWFiAsICMmJykqKRkfLTAtKDAlKCko/9sAQwEHBwcKCAoTCgoTKBoWGigoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo/8AAEQgAEAAQAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A4Ciiivnj9hP/2Q==',\n  B: '/9j/4AAQSkZJRgABAQAAAQABAAD/4QBoRXhpZgAATU0AKgAAAAgAAgEyAAIAAAAUAAAAJodpAAQAAAABAAAAOgAAAAAyMDI2OjA5OjAxIDA5OjE1OjAwAAABkAMAAgAAABQAAABMAAAAADIwMjY6MDk6MDEgMDk6MTU6MDAA/9sAQwAGBAUGBQQGBgUGBwcGCAoQCgoJCQoUDg8MEBcUGBgXFBYWGh0lHxobIxwWFiAsICMmJykqKRkfLTAtKDAlKCko/9sAQwEHBwcKCAoTCgoTKBoWGigoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo/8AAEQgAEAAQAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8AfRRRX5+flx//2Q==',\n  C: '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAQABADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDxaiiiv2E88//Z',\n  D: '/9j/4AAQSkZJRgABAQAAAQABAAD/4QBoRXhpZgAATU0AKgAAAAgAAgEyAAIAAAAUAAAAJodpAAQAAAABAAAAOgAAAAAyMDI2OjA5OjAxIDA5OjE1OjAwAAABkAMAAgAAABQAAABMAAAAADIwMjY6MDk6MDEgMDk6MTU6MDAA/9sAQwAGBAUGBQQGBgUGBwcGCAoQCgoJCQoUDg8MEBcUGBgXFBYWGh0lHxobIxwWFiAsICMmJykqKRkfLTAtKDAlKCko/9sAQwEHBwcKCAoTCgoTKBoWGigoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo/8AAEQgAEAAQAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A5CiiivnT1j//2Q==',\n  E: '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAQABADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDkKKKKk+UP/9k=',\n};\nconst photos = (...names) => Object.fromEntries(names.map((n, i) => [\n  `photo_${i + 1}`, { data: PHOTO[n], mimeType: 'image/jpeg', fileName: `photo_${n}.jpg`, fileExtension: 'jpg' },\n]));\n\nconst V = (name, claimChanges, expect, binary) => ({ name, input: { stage: 'validate', claim: { ...claim, ...claimChanges } }, expect, binary });\nconst D = (name, changes, expect) => ({\n  name,\n  input: { stage: 'decide', claim, validation, visual, invoice, policy_rag, ...changes(JSON.parse(JSON.stringify({ claim, validation, visual, invoice, policy_rag }))) },\n  expect,\n});\n\nconst cases = [\n  // Validate stage\n  V('V1 valid claim', {}, { valid: true }),\n  V('V5 missing description', { description: '' }, { valid: false, reason: 'description' }),\n  V('V6 no photos', { photo_count: 0 }, { valid: false, reason: 'photo_count' }),\n  V('V7 future incident date', { incident_date: '2099-01-01' }, { valid: false, reason: 'future' }),\n  V('V8 invoice missing', { has_invoice: false }, { valid: false, reason: 'invoice' }),\n  V('V11 photo files: dates read, nothing reused', {}, { valid: true, photos_checked: 2, photo_reused: false, photo_dates: ['2026-09-01'] }, photos('D', 'E')),\n  V('V12 photo files: reused photo caught', {}, { valid: true, photos_checked: 1, photo_reused: true, reused_from: ['CLM-H001'], photo_dates: ['2026-10-10'] }, photos('A')),\n\n  // Decide stage\n  D('D1 clean claim', () => ({}), { rule_score: 0, signs: [], route: ['auto_approve', 'human_review'] }),\n  D('D2 reused photo', d => ({ claim: { ...d.claim, photo_reused: true } }), { rule_score: 40, signs: ['PHOTO_REUSED'], route: ['fraud_investigation'] }),\n  D('D3 damage mismatch', d => ({ visual: { ...d.visual, matches_description: false, mismatch_reason: 'Front damage, rear impact described' } }), { rule_score: 20, signs: ['DAMAGE_MISMATCH'], route: ['human_review'] }),\n  D('D4 mismatch + bad invoice maths', d => ({ visual: { ...d.visual, matches_description: false }, invoice: { ...d.invoice, totals_match: false } }), { rule_score: 35, signs: ['DAMAGE_MISMATCH', 'INVOICE_ARITHMETIC'], route: ['human_review', 'fraud_investigation'] }),\n  D('D5 photo before incident', d => ({ claim: { ...d.claim, photo_taken_dates: ['2026-09-01'] } }), { rule_score: 15, signs: ['PHOTO_BEFORE_INCIDENT'], route: ['auto_approve', 'human_review'] }),\n  D('D6 invoiced parts not in photos', d => ({ invoice: { ...d.invoice, line_items: [...d.invoice.line_items, { part: 'Phare avant', type: 'part' }, { part: 'Capot', type: 'part' }] } }), { rule_score: 10, signs: ['PART_NOT_VISIBLE'], route: ['auto_approve', 'human_review'] }),\n  D('D7 pre-existing damage', d => ({ visual: { ...d.visual, pre_existing_damage_signs: true, pre_existing_reason: 'Rust in scratches' } }), { rule_score: 10, signs: ['PRE_EXISTING_DAMAGE'], route: ['auto_approve', 'human_review'] }),\n  D('D8 everything wrong (score capped at 60)', d => ({\n    claim: { ...d.claim, photo_reused: true, photo_taken_dates: ['2026-09-01'] },\n    visual: { ...d.visual, matches_description: false, pre_existing_damage_signs: true },\n    invoice: { ...d.invoice, totals_match: false },\n  }), { rule_score: 60, signs: ['PHOTO_REUSED', 'DAMAGE_MISMATCH', 'INVOICE_ARITHMETIC', 'PHOTO_BEFORE_INCIDENT', 'PRE_EXISTING_DAMAGE'], route: ['fraud_investigation'] }),\n  D('D9 amount above auto-approval limit', d => ({ claim: { ...d.claim, claimed_amount: 5000 } }), { rule_score: 0, signs: [], route: ['human_review'] }),\n  D('D10 coverage excluded', d => ({ policy_rag: { ...d.policy_rag, coverage_status: 'EXCLUDED' } }), { rule_score: 0, signs: [], route: ['human_review'] }),\n  D('D11 visual agent result missing', () => ({ visual: undefined }), { rule_score: 0, signs: [], route: ['human_review'], missing: ['visual'] }),\n  D('D12 visual agent returned an error', () => ({ visual: { error: true, error_message: 'model failed' } }), { rule_score: 0, signs: [], route: ['human_review'], missing: ['visual'] }),\n  D('D13 reused photo found by the validate stage', d => ({ validation: { ...d.validation, photo_checks: { photo_reused: true, reused_from_claims: ['CLM-H001'], photo_taken_dates: ['2026-10-10'] } } }), { rule_score: 40, signs: ['PHOTO_REUSED'], route: ['fraud_investigation'] }),\n  D('D14 early photo date found by the validate stage', d => ({ validation: { ...d.validation, photo_checks: { photo_reused: false, reused_from_claims: [], photo_taken_dates: ['2026-09-01'] } } }), { rule_score: 15, signs: ['PHOTO_BEFORE_INCIDENT'], route: ['human_review'] }),\n  D('D15 incident story implausible (plausibility agent)', () => ({ plausibility: { agent: 'incident_plausibility', score: 25, weighted_score: 25, warning_signs: [{ code: 'WEATHER_OR_LIGHT_CONTRADICTION', points: 15, confidence: 'high' }, { code: 'PLACE_FEATURE_MISSING', points: 10, confidence: 'high' }], summary: '2 warning signs, 25 points: weather or light contradiction; place feature missing.' } }), { rule_score: 20, signs: ['INCIDENT_IMPLAUSIBLE'], route: ['human_review'] }),\n  D('D16 plausibility agent failed', () => ({ plausibility: { error: 'Incident Plausibility: missing input fields: incident_datetime' } }), { rule_score: 0, signs: [], route: ['human_review'], missing: ['plausibility'] }),\n  D('D17 plausibility agent found nothing', () => ({ plausibility: { agent: 'incident_plausibility', score: 0, weighted_score: 0, warning_signs: [], summary: 'No warning signs.' } }), { rule_score: 0, signs: [], route: ['auto_approve', 'human_review'] }),\n  D('D18 invoiced parts compared by code', d => ({\n    visual: { ...d.visual, damaged_parts: ['rear_bumper', 'trunk_lid_tailgate'] },\n    invoice: { ...d.invoice, line_items: [\n      { part: 'Pare-choc AR', type: 'part', part_code: 'rear_bumper' },\n      { part: 'Phare avant gauche', type: 'part', part_code: 'headlight_left' },\n      { part: 'Feu arriere', type: 'part', part_code: null },\n      { part: \"Main d'oeuvre\", type: 'labor', part_code: null },\n    ] },\n  }), { rule_score: 5, signs: ['PART_NOT_VISIBLE'], route: ['auto_approve', 'human_review'] }),\n  D('D19 amount unknown (invoice total not read)', d => ({ claim: { ...d.claim, claimed_amount: undefined } }), { rule_score: 0, signs: [], route: ['human_review'] }),\n];\n\nreturn cases.map((c, i) => ({\n  json: { ...c.input, claim: { ...c.input.claim, claim_id: `TST-${c.name.split(\" \")[0]}` }, _test_name: c.name, _expect: c.expect },\n  ...(c.binary ? { binary: c.binary } : {}),\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        140,
+        0
+      ],
+      "id": "b7cc7112-7b57-4238-8749-25ea596a1325",
+      "name": "Test Cases"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        360,
+        0
+      ],
+      "id": "7c4a1629-8ded-44ec-8d6b-b663e57ff398",
+      "name": "One Test At A Time"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "hyKQcsHn7Jr2K7qH",
+          "mode": "list",
+          "cachedResultName": "04_Validation_Fraud_Decision_Agent",
+          "cachedResultUrl": "/workflow/hyKQcsHn7Jr2K7qH"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        600,
+        120
+      ],
+      "id": "6c001416-91ed-489a-bef2-06c801229263",
+      "name": "Run Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        820,
+        120
+      ],
+      "id": "7be9a797-b001-4985-94bc-c5186a16bfa5",
+      "name": "Pause (AI rate limit)",
+      "webhookId": "b54443c7-5e29-4014-9723-c7b5266a785c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compares what the agent returned with what each test expected.\nconst cases = $('Test Cases').all();\nconst sameSet = (a, b) => [...a].sort().join(',') === [...b].sort().join(',');\n\nconst rows = $input.all().map((item, i) => {\n  const t = cases[i].json;\n  const e = t._expect;\n  const out = item.json;\n  const problems = [];\n\n  if (out.error) {\n    const msg = typeof out.error === 'string' ? out.error : (out.error.message || JSON.stringify(out.error));\n    problems.push(`agent crashed: ${msg}`);\n  }\n\n  if ('valid' in e && out.valid !== e.valid) problems.push(`valid is ${out.valid}, expected ${e.valid}`);\n  if (e.reason && !(out.reasons || []).some(r => r.toLowerCase().includes(e.reason.toLowerCase()))) {\n    problems.push(`no reason mentioning \"${e.reason}\" (got: ${(out.reasons || []).join('; ') || 'none'})`);\n  }\n  if ('rule_score' in e && out.rule_score !== e.rule_score) problems.push(`rule_score is ${out.rule_score}, expected ${e.rule_score}`);\n  if (e.signs) {\n    const got = (out.warning_signs || []).map(s => s.code);\n    if (!sameSet(got, e.signs)) problems.push(`warning signs are [${got.join(', ')}], expected [${e.signs.join(', ')}]`);\n  }\n  if (e.route && !e.route.includes(out.route)) problems.push(`route is ${out.route}, expected ${e.route.join(' or ')}`);\n  if (e.missing && !sameSet(out.missing_inputs || [], e.missing)) problems.push(`missing_inputs is [${(out.missing_inputs || []).join(', ')}], expected [${e.missing.join(', ')}]`);\n  const pc = out.photo_checks ?? {};\n  if ('photos_checked' in e && pc.photos_checked !== e.photos_checked) problems.push(`photos_checked is ${pc.photos_checked}, expected ${e.photos_checked}`);\n  if ('photo_reused' in e && pc.photo_reused !== e.photo_reused) problems.push(`photo_reused is ${pc.photo_reused}, expected ${e.photo_reused}`);\n  if (e.reused_from && !sameSet(pc.reused_from_claims || [], e.reused_from)) problems.push(`reused_from_claims is [${(pc.reused_from_claims || []).join(', ')}], expected [${e.reused_from.join(', ')}]`);\n  if (e.photo_dates && !sameSet(pc.photo_taken_dates || [], e.photo_dates)) problems.push(`photo_taken_dates is [${(pc.photo_taken_dates || []).join(', ')}], expected [${e.photo_dates.join(', ')}]`);\n  if (out.llm_error) problems.push(`LLM problem: ${out.llm_error}`);\n\n  return {\n    json: {\n      test: t._test_name,\n      result: problems.length ? 'FAIL' : 'PASS',\n      problems: problems.join(' | '),\n      route: out.route ?? (out.valid === undefined ? '' : (out.valid ? 'valid' : 'rejected')),\n      risk_score: out.risk_score ?? '',\n      llm_adjustment: out.llm_adjustment ?? '',\n    },\n  };\n});\n\nconst failed = rows.filter(r => r.json.result === 'FAIL').length;\nrows.unshift({ json: { test: 'SUMMARY', result: failed ? `${failed} FAILED` : 'ALL PASSED', problems: `${rows.length - failed}/${rows.length} tests passed`, route: '', risk_score: '', llm_adjustment: '' } });\nreturn rows;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        0
+      ],
+      "id": "dabe04c7-b1ff-4ede-baaf-893567a983b8",
+      "name": "Check Results"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Seed Test Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seed Test Photo": {
+      "main": [
+        [
+          {
+            "node": "Test Cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Cases": {
+      "main": [
+        [
+          {
+            "node": "One Test At A Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Test At A Time": {
+      "main": [
+        [
+          {
+            "node": "Check Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Agent": {
+      "main": [
+        [
+          {
+            "node": "Pause (AI rate limit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause (AI rate limit)": {
+      "main": [
+        [
+          {
+            "node": "One Test At A Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}
