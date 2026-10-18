@@ -1,0 +1,34 @@
+# n8n runtime data
+n8n_data/
+n8n_data/*
+
+# Qdrant vector database data
+qdrant_data/
+qdrant_data/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test results
+rag_*.json
+rag_*.csv
+rag_*.txt
