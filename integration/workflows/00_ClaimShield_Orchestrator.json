@@ -1,0 +1,1162 @@
+{
+  "id": "CSOrchestrator00",
+  "name": "00_ClaimShield_Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## ClaimShield AI - Orchestrator\n**Claim Form** (demo) or **Claim API** (POST /webhook/claimshield/claims, header auth) ->\n1. **Prepare Claim**: one claim format; photos -> photo_0.., invoice -> invoice. *Settings at the top.*\n2. **Photo Checks / Register Check**: EXIF date of each photo, fingerprint vs earlier claims (reused photo).\n3. **Validate Claim** (decision agent, stage validate): fields, policy, coverage dates. Invalid -> rejected, no AI call.\n4. **Visual Inspection** -> **Invoice Parser** -> **Policy RAG** (sub-workflows; a failed agent never blocks the claim).\n5. **Fraud Risk & Decision** (stage decide): rule score (max 60) + LLM (max 40) -> auto_approve / human_review / fraud_investigation.\n6. Outputs: audit log (data/claimshield/decisions_log.jsonl), photo register, result page, mock payment, Slack review / alert.\n",
+        "width": 760,
+        "height": 420,
+        "color": 7
+      },
+      "id": "41eb0942-1985-5001-80bb-8f56178d08b1",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -520
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "ClaimShield AI – submit a motor claim",
+        "formDescription": "Internal demo form: the claim is checked by the photo, invoice and policy agents, then scored.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Policy ID",
+              "placeholder": "POL-1001",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Incident date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Incident location",
+              "placeholder": "Tunis"
+            },
+            {
+              "fieldLabel": "Description of the accident",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Claimed amount (TND)",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Damage photos",
+              "fieldType": "file",
+              "multipleFiles": true,
+              "acceptFileTypes": ".jpg,.jpeg,.png",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Repair invoice",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf,.jpg,.jpeg,.png",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "dbf80a5a-006e-52bb-b468-2961dee8c102",
+      "name": "Claim Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "c8cfd230-45e0-562b-8293-ecef205ce090"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "claimshield/claims",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {
+          "responseCode": {
+            "values": {
+              "responseCode": "customCode",
+              "customCode": 202
+            }
+          }
+        }
+      },
+      "id": "ca8c8f1c-c49a-5c92-99a3-0bc5e2f3ea63",
+      "name": "Claim API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SET_API_KEY_CREDENTIAL",
+          "name": "ClaimShield API key"
+        }
+      },
+      "webhookId": "9f7bbbd5-6ef6-5182-b33f-6db4bfce29e5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== SETTINGS ===================================================================================\nconst SETTINGS = {\n  invoice_technique: 'few_shot',     // prompt technique of the invoice agent (best in the evaluation)\n  slack_enabled: false,              // true once a Slack credential is set on the two Slack nodes\n  slack_channel: 'claims-review',    // channel name (without #) for review requests and fraud alerts\n};\n// ==================================================================================================\n// One claim format for both entry points (the form and the authenticated API), and the files sorted:\n// images -> photo_0, photo_1, ... ; the repair invoice (PDF, or a file whose name says invoice/facture) -> invoice.\nconst item = $input.first();\nconst j = item.json || {};\nconst fromApi = j.headers !== undefined && j.body !== undefined;\nconst body = fromApi ? (j.body || {}) : j;\nconst pick = (...keys) => {\n  for (const k of keys) {\n    const v = body[k];\n    if (v !== undefined && v !== null && String(v).trim() !== '' && typeof v !== 'object') return v;\n  }\n  return undefined;\n};\nconst isInvoiceName = (s) => /invoice|facture|repair/i.test(s || '');\nconst isImage = (b) => /^image\\//i.test(b.mimeType || '') || /\\.(jpe?g|png|webp)$/i.test(b.fileName || '');\nconst isPdf = (b) => /pdf/i.test(b.mimeType || '') || /\\.pdf$/i.test(b.fileName || '');\nconst files = Object.entries(item.binary || {});\nlet invoiceEntry = files.find(([k, b]) => isInvoiceName(k) || isInvoiceName(b.fileName)) || files.find(([, b]) => isPdf(b));\nconst binary = {};\nlet n = 0;\nfor (const [k, b] of files) {\n  if (invoiceEntry && k === invoiceEntry[0]) continue;\n  if (isImage(b)) binary[`photo_${n++}`] = b;\n}\nif (invoiceEntry) binary.invoice = invoiceEntry[1];\n\nconst now = new Date();\nconst amount = pick('claimed_amount', 'Claimed amount (TND)');\nconst date = pick('incident_date', 'Incident date');\nconst claim = {\n  claim_id: String(pick('claim_id') || `CLM-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`),\n  policy_id: String(pick('policy_id', 'Policy ID') ?? '').trim().toUpperCase(),\n  incident_date: date ? String(date).slice(0, 10) : undefined,\n  incident_location: String(pick('incident_location', 'Incident location') ?? ''),\n  description: String(pick('description', 'Description of the accident') ?? ''),\n  claimed_amount: amount !== undefined ? Number(String(amount).replace(',', '.')) : undefined,\n  photo_count: n,\n  has_invoice: !!invoiceEntry,\n  source: fromApi ? 'api' : 'form',\n  submitted_at: now.toISOString(),\n};\nreturn [{ json: { claim, settings: SETTINGS }, binary }];\n"
+      },
+      "id": "ef5a8dcc-2993-53ca-919e-2473a9d04373",
+      "name": "Prepare Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Two photo checks that no agent does (design 4.6):\n//  - the date each photo was taken, read from its EXIF data  -> PHOTO_BEFORE_INCIDENT rule (+15)\n//  - a fingerprint of the file, compared later with all earlier claims -> PHOTO_REUSED rule (+40)\nconst item = $input.first();\nconst checks = [];\nfor (const key of Object.keys(item.binary || {}).filter((k) => k.startsWith('photo_'))) {\n  const buf = await this.helpers.getBinaryDataBuffer(0, key);\n  // 64-bit fingerprint (two FNV-1a passes): the same file always gives the same value\n  let a = 0x811c9dc5, b = 0x01000193 ^ buf.length;\n  for (let i = 0; i < buf.length; i++) {\n    a = Math.imul(a ^ buf[i], 16777619) >>> 0;\n    b = Math.imul(b ^ buf[buf.length - 1 - i], 16777619) >>> 0;\n  }\n  const fingerprint = `${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}-${buf.length}`;\n  // EXIF dates are plain text \"YYYY:MM:DD HH:MM:SS\" at the start of a JPEG; the earliest one is the shot\n  const head = buf.subarray(0, Math.min(buf.length, 131072)).toString('latin1');\n  const dates = [...head.matchAll(/(\\d{4}):(\\d{2}):(\\d{2}) \\d{2}:\\d{2}:\\d{2}/g)]\n    .map((m) => `${m[1]}-${m[2]}-${m[3]}`)\n    .filter((d) => d >= '1995-01-01' && !Number.isNaN(Date.parse(d)))\n    .sort();\n  checks.push({ key, file_name: item.binary[key].fileName || key, fingerprint, taken_date: dates[0] || null });\n}\nreturn [{ json: { ...item.json, photo_checks: checks }, binary: item.binary }];\n"
+      },
+      "id": "2aa82d4a-2eac-5f06-bc05-940af512d3f5",
+      "name": "Photo Checks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/data/claimshield/photo_register.json",
+        "options": {}
+      },
+      "id": "865b2057-8812-595b-a2ca-da8cb7498966",
+      "name": "Read Photo Register",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare the photo fingerprints with the photos of every earlier claim (data/claimshield/photo_register.json).\nconst P = $('Photo Checks').first();\nlet register = [];\ntry {\n  if ($input.first().binary?.data) {\n    const r = JSON.parse((await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8'));\n    if (Array.isArray(r)) register = r;\n  }\n} catch (e) { register = []; }   // no register yet (first claim) or unreadable: nothing to compare\nconst claim = { ...P.json.claim };\nconst checks = P.json.photo_checks || [];\nconst reuse = [];\nfor (const c of checks) {\n  const hit = register.find((r) => r.fingerprint === c.fingerprint && r.claim_id !== claim.claim_id);\n  if (hit) reuse.push({ file_name: c.file_name, already_used_in: hit.claim_id });\n}\nclaim.photo_taken_dates = checks.map((c) => c.taken_date).filter(Boolean);\nclaim.photo_reused = reuse.length > 0;\nreturn [{ json: { ...P.json, claim, photo_reuse: reuse, photo_register: register }, binary: P.binary }];\n"
+      },
+      "id": "55cf8ecc-e09d-59bb-bb92-721988aa376d",
+      "name": "Register Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 1 of the decision agent: required fields, policy, coverage dates (no AI call).\nreturn [{ json: { stage: 'validate', claim: $('Register Check').first().json.claim } }];"
+      },
+      "id": "2be95c42-e50f-56e0-b5b0-bca84d777839",
+      "name": "Validation Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "CSDecision05",
+          "mode": "list",
+          "cachedResultName": "05_Validation_Fraud_Decision_Agent"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "65ddc1e2-38c2-585b-a382-4df0bf67f692",
+      "name": "Validate Claim",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "f9e11515-cdf9-598b-8692-65345279e58b",
+      "name": "Claim Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Visual Inspection Agent input: the claim fields it uses + only the photos (it analyses every file it receives).\nconst R = $('Register Check').first();\nconst c = R.json.claim;\nconst binary = Object.fromEntries(Object.entries(R.binary || {}).filter(([k]) => k.startsWith('photo_')));\nreturn [{ json: { claim_id: c.claim_id, description: c.description, incident_date: c.incident_date, photo_count: c.photo_count }, binary }];\n"
+      },
+      "id": "3ecb3839-9c2f-5e0c-92a0-40c8ad3d9b01",
+      "name": "Visual Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "CSVisualAgent03",
+          "mode": "list",
+          "cachedResultName": "03_Visual_Inspection_Agent"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "bb9aa1a6-5d4c-5185-b464-10bf3cfac5d7",
+      "name": "Visual Inspection",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2020,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Invoice Parser Agent input: the claim (for its fraud signals) + the invoice file only.\nconst R = $('Register Check').first();\nconst c = R.json.claim;\nconst json = {\n  claim: { claim_id: c.claim_id, claimed_amount: c.claimed_amount, incident_date: c.incident_date },\n  technique: R.json.settings.invoice_technique,\n};\nif (!R.binary?.invoice) json.invoice_path = '/data/claimshield/no_invoice_sent.pdf';   // agent answers { error: true }\nreturn [{ json, binary: R.binary?.invoice ? { invoice: R.binary.invoice } : {} }];\n"
+      },
+      "id": "47c5fe11-07d9-5699-b9af-e6cd949043f4",
+      "name": "Invoice Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "InvParserAgent03",
+          "mode": "list",
+          "cachedResultName": "04_Invoice_Parser_Agent"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "e8701594-4aff-5115-90c7-a5ea4bb607a5",
+      "name": "Invoice Parser",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2460,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Policy RAG Agent input: description, the customer's product, the parts seen on the photos and on the invoice.\nconst out = (name) => {\n  const j = $(name).first().json;\n  return j && Object.keys(j).length ? j : { error: true, reason: `${name}: no output` };\n};\nreturn [{ json: {\n  claim: $('Register Check').first().json.claim,\n  policy: $('Validate Claim').first().json.policy,\n  visual: out('Visual Inspection'),\n  invoice: out('Invoice Parser'),\n} }];\n"
+      },
+      "id": "bf2310e6-9d09-566c-82ab-97d7a6c9e1cc",
+      "name": "RAG Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "CSPolicyRAG02",
+          "mode": "list",
+          "cachedResultName": "02_Policy_RAG_Agent"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "f94e5c4b-f391-5984-90ca-7d09c8de0fa0",
+      "name": "Policy RAG",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2900,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 2 of the decision agent: everything the agents found. The invoice is reduced to the contract fields\n// (the full extraction is kept in the audit log, not sent to the LLM).\nconst out = (name) => {\n  const j = $(name).first().json;\n  return j && Object.keys(j).length ? j : { error: true, reason: `${name}: no output` };\n};\nconst inv = out('Invoice Parser');\nconst invoice = inv.error ? inv : {\n  totals_match: inv.totals_match, arithmetic_issue: inv.arithmetic_issue, line_items: inv.line_items,\n  status: inv.status, review_reasons: inv.review_reasons, warnings: inv.warnings,\n  amount_matches_claim: inv.amount_matches_claim, total: inv.invoice?.total, currency: inv.invoice?.currency,\n};\nreturn [{ json: {\n  stage: 'decide',\n  claim: $('Register Check').first().json.claim,\n  validation: $('Validate Claim').first().json,\n  visual: out('Visual Inspection'),\n  invoice,\n  policy_rag: out('Policy RAG'),\n} }];\n"
+      },
+      "id": "37d75ad6-6b89-55f3-8b4b-e79dafebff15",
+      "name": "Decision Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "CSDecision05",
+          "mode": "list",
+          "cachedResultName": "05_Validation_Fraud_Decision_Agent"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "0d726c0c-67cc-5d32-bd82-0036e4009060",
+      "name": "Fraud Risk & Decision",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3340,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- shared by Decision Record and Rejected Record: result page and Slack texts\nconst LABEL = { auto_approve: 'APPROVED', human_review: 'HUMAN REVIEW', fraud_investigation: 'FRAUD INVESTIGATION', rejected: 'REJECTED' };\nconst CUSTOMER = {\n  auto_approve: (r) => `Your claim ${r.claim_id} is approved. A payment request of ${r.payout_proposed ?? '-'} TND (after the deductible) has been sent.`,\n  human_review: (r) => `Your claim ${r.claim_id} has been received and is being reviewed by an adjuster. You will be contacted within 2 working days.`,\n  // customer messages never mention suspected fraud (design 4.8)\n  fraud_investigation: (r) => `Your claim ${r.claim_id} has been received and needs additional checks by our team. You will be contacted soon.`,\n  rejected: (r) => `Your claim ${r.claim_id} cannot be accepted: ${r.route_reasons.join('; ')}.`,\n};\nfunction finish(r, settings) {\n  const signs = (r.warning_signs || []).map((s) => `${s.code} (+${s.points}): ${s.detail}`);\n  const internal = [\n    `Route: ${LABEL[r.route] || r.route}` + (r.risk_score != null ? ` | risk score ${r.risk_score}/100 (rules ${r.rule_score} + AI ${r.llm_adjustment})` : ''),\n    `Warning signs: ${signs.length ? signs.join(' | ') : 'none'}`,\n    r.coverage?.status ? `Coverage: ${r.coverage.status}${(r.coverage.cited_clauses || []).length ? ` (${r.coverage.cited_clauses.join(', ')})` : ''}` : null,\n    `Reasons: ${(r.route_reasons || []).join('; ') || '-'}`,\n    r.justification ? `AI assessment: ${r.justification}` : null,\n    `Processed in ${r.processing_seconds} s`,\n  ].filter(Boolean);\n  const page = {\n    title: `Claim ${r.claim_id} - ${LABEL[r.route] || r.route}`,\n    message: `${CUSTOMER[r.route] ? CUSTOMER[r.route](r) : ''}\\n\\n--- Internal summary (adjuster only) ---\\n${internal.join('\\n')}`,\n  };\n  const head = `Claim ${r.claim_id} | policy ${r.claim.policy_id} | ${r.claim.claimed_amount} TND`;\n  const slack = {\n    review_message: `*Human review needed* - ${head}\\n${internal.join('\\n')}\\nDescription: ${r.claim.description}`,\n    fraud_message: `:rotating_light: *Fraud investigation* - ${head}\\n${internal.join('\\n')}`,\n  };\n  return [{ json: { ...r, settings, page, slack } }];\n}\n\n// The decision record (design 4.7) + everything needed for the audit log, the result page and Slack.\nconst R = $('Register Check').first().json;\nconst input = $('Decision Input').first().json;\nconst d = $input.first().json || {};\nconst ok = typeof d.route === 'string';\nconst policy = input.validation?.policy || {};\nconst amount = Number(R.claim.claimed_amount);\nconst route = ok ? d.route : 'human_review';\nconst payout = route === 'auto_approve'\n  ? Math.round(Math.max(0, Math.min(amount - (policy.deductible || 0), policy.coverage_limit ?? Infinity)) * 1000) / 1000 : null;\nconst record = {\n  claim_id: R.claim.claim_id,\n  decided_at: new Date().toISOString(),\n  processing_seconds: Math.round((Date.now() - Date.parse(R.claim.submitted_at)) / 100) / 10,\n  route,\n  risk_score: ok ? d.risk_score : null,\n  rule_score: ok ? d.rule_score : null,\n  llm_adjustment: ok ? d.llm_adjustment : null,\n  warning_signs: ok ? d.warning_signs : [],\n  route_reasons: ok ? d.route_reasons : [`Decision agent failed: ${String(d.error ?? 'no output')}`],\n  coverage: ok ? d.coverage : {},\n  justification: ok ? d.justification : '',\n  additional_concerns: ok ? d.additional_concerns : [],\n  missing_inputs: ok ? d.missing_inputs : [],\n  payout_proposed: payout,\n  claim: R.claim,\n  policy: { policy_id: policy.policy_id, product: policy.product, deductible: policy.deductible,\n            coverage_limit: policy.coverage_limit, auto_approval_limit: policy.auto_approval_limit },\n  photo_reuse: R.photo_reuse,\n  agents: { visual: input.visual, invoice: $('Invoice Parser').first().json, policy_rag: input.policy_rag },\n};\nreturn finish(record, R.settings);\n"
+      },
+      "id": "cb483ad6-99e3-5e59-9c39-cf7ad3ec8c6f",
+      "name": "Decision Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- shared by Decision Record and Rejected Record: result page and Slack texts\nconst LABEL = { auto_approve: 'APPROVED', human_review: 'HUMAN REVIEW', fraud_investigation: 'FRAUD INVESTIGATION', rejected: 'REJECTED' };\nconst CUSTOMER = {\n  auto_approve: (r) => `Your claim ${r.claim_id} is approved. A payment request of ${r.payout_proposed ?? '-'} TND (after the deductible) has been sent.`,\n  human_review: (r) => `Your claim ${r.claim_id} has been received and is being reviewed by an adjuster. You will be contacted within 2 working days.`,\n  // customer messages never mention suspected fraud (design 4.8)\n  fraud_investigation: (r) => `Your claim ${r.claim_id} has been received and needs additional checks by our team. You will be contacted soon.`,\n  rejected: (r) => `Your claim ${r.claim_id} cannot be accepted: ${r.route_reasons.join('; ')}.`,\n};\nfunction finish(r, settings) {\n  const signs = (r.warning_signs || []).map((s) => `${s.code} (+${s.points}): ${s.detail}`);\n  const internal = [\n    `Route: ${LABEL[r.route] || r.route}` + (r.risk_score != null ? ` | risk score ${r.risk_score}/100 (rules ${r.rule_score} + AI ${r.llm_adjustment})` : ''),\n    `Warning signs: ${signs.length ? signs.join(' | ') : 'none'}`,\n    r.coverage?.status ? `Coverage: ${r.coverage.status}${(r.coverage.cited_clauses || []).length ? ` (${r.coverage.cited_clauses.join(', ')})` : ''}` : null,\n    `Reasons: ${(r.route_reasons || []).join('; ') || '-'}`,\n    r.justification ? `AI assessment: ${r.justification}` : null,\n    `Processed in ${r.processing_seconds} s`,\n  ].filter(Boolean);\n  const page = {\n    title: `Claim ${r.claim_id} - ${LABEL[r.route] || r.route}`,\n    message: `${CUSTOMER[r.route] ? CUSTOMER[r.route](r) : ''}\\n\\n--- Internal summary (adjuster only) ---\\n${internal.join('\\n')}`,\n  };\n  const head = `Claim ${r.claim_id} | policy ${r.claim.policy_id} | ${r.claim.claimed_amount} TND`;\n  const slack = {\n    review_message: `*Human review needed* - ${head}\\n${internal.join('\\n')}\\nDescription: ${r.claim.description}`,\n    fraud_message: `:rotating_light: *Fraud investigation* - ${head}\\n${internal.join('\\n')}`,\n  };\n  return [{ json: { ...r, settings, page, slack } }];\n}\n\n// A claim rejected by the validation stage (missing field, unknown or inactive policy, incident outside\n// the coverage period): no AI call was made.\nconst R = $('Register Check').first().json;\nconst v = $input.first().json || {};\nconst record = {\n  claim_id: R.claim.claim_id,\n  decided_at: new Date().toISOString(),\n  processing_seconds: Math.round((Date.now() - Date.parse(R.claim.submitted_at)) / 100) / 10,\n  route: 'rejected',\n  risk_score: null, rule_score: null, llm_adjustment: null, warning_signs: [],\n  route_reasons: v.reasons?.length ? v.reasons : [`Validation failed: ${String(v.error ?? 'no output')}`],\n  coverage: {}, justification: '', additional_concerns: [], missing_inputs: [], payout_proposed: null,\n  claim: R.claim, policy: v.policy || null, photo_reuse: R.photo_reuse, agents: {},\n};\nreturn finish(record, R.settings);\n"
+      },
+      "id": "bf0df8b2-1058-562c-963c-538de64c0027",
+      "name": "Rejected Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One JSON line per claim in data/claimshield/decisions_log.jsonl (audit trail: every agent result is kept).\nconst { page, slack, settings, ...record } = $input.first().json;\nconst line = JSON.stringify({ type: 'decision', ...record }) + '\\n';\nreturn [{ json: { claim_id: record.claim_id, route: record.route },\n          binary: { log: { data: Buffer.from(line, 'utf8').toString('base64'), mimeType: 'application/x-ndjson', fileName: 'decisions_log.jsonl' } } }];\n"
+      },
+      "id": "c0f4141a-9e81-53b2-a9c3-f3d41499299d",
+      "name": "Log Line",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3800,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/data/claimshield/decisions_log.jsonl",
+        "dataPropertyName": "log",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "aacb5599-7824-5ea7-a1d9-0ef1b6f97605",
+      "name": "Append Decision Log",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        4020,
+        -260
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Add this claim's photos to the register so a later claim reusing them is detected.\nconst r = $input.first().json;\nconst R = $('Register Check').first().json;\nconst register = [...(R.photo_register || [])];\nfor (const c of R.photo_checks || []) {\n  if (!register.some((x) => x.fingerprint === c.fingerprint && x.claim_id === r.claim_id)) {\n    register.push({ fingerprint: c.fingerprint, claim_id: r.claim_id, file_name: c.file_name, taken_date: c.taken_date, added_at: new Date().toISOString() });\n  }\n}\nreturn [{ json: { photos_in_register: register.length },\n          binary: { register: { data: Buffer.from(JSON.stringify(register, null, 1), 'utf8').toString('base64'), mimeType: 'application/json', fileName: 'photo_register.json' } } }];\n"
+      },
+      "id": "1f14b440-f00e-5995-bf06-480a59dbb04d",
+      "name": "Updated Photo Register",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3800,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/data/claimshield/photo_register.json",
+        "dataPropertyName": "register",
+        "options": {}
+      },
+      "id": "186bdefa-0f9b-5985-a8aa-1723fbfaae02",
+      "name": "Save Photo Register",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        4020,
+        -80
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "form",
+              "leftValue": "={{ $json.claim.source }}",
+              "rightValue": "form",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "1194b182-24ff-5dc7-9ec7-ee67b41dd4ee",
+      "name": "From Form?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3800,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "={{ $json.page.title }}",
+        "completionMessage": "={{ $json.page.message }}",
+        "options": {}
+      },
+      "id": "6354199b-d7f1-5740-b3c8-944a90d3cb16",
+      "name": "Show Result",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        4020,
+        100
+      ],
+      "webhookId": "5659a5d8-d85c-5177-a685-2c1ecfe08d6d"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "auto_approve",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "auto_approve"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "human_review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "human_review"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "fraud_investigation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "fraud_investigation"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "rejected"
+        }
+      },
+      "id": "78e2ed50-2758-51c8-b698-f810d716d62d",
+      "name": "Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3800,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mock payment endpoint (real payments are out of scope, design 1.3): the request is recorded only.\nconst r = $input.first().json;\nreturn [{ json: { payment_request: { claim_id: r.claim_id, amount: r.payout_proposed, currency: 'TND', status: 'mock_sent', at: new Date().toISOString() } } }];\n"
+      },
+      "id": "06002203-1c66-5ed9-b719-908c89235e24",
+      "name": "Payment Request (mock)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4060,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "slack",
+              "leftValue": "={{ $json.settings.slack_enabled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "5153cde7-f5d1-5fbd-b424-b4c24b58ea46",
+      "name": "Slack On? (review)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4060,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.settings.slack_channel }}",
+          "mode": "name"
+        },
+        "message": "={{ $json.slack.review_message }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Approve claim",
+            "disapproveLabel": "Reject claim"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": 2,
+              "resumeUnit": "days"
+            }
+          }
+        }
+      },
+      "id": "cbbf8c75-9d5a-5305-a45f-9cc2ac66e543",
+      "name": "Ask Adjuster on Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        4280,
+        420
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "SET_SLACK_CREDENTIAL",
+          "name": "Slack account"
+        }
+      },
+      "webhookId": "0adaece0-3ad7-5c3f-bd6a-ce2183fe2b0f",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The adjuster's answer on Slack is added to the audit log.\nconst r = $('Decision Record').first().json;\nconst approved = $json.data?.approved;\nconst answer = approved === true ? 'approved' : approved === false ? 'rejected' : 'no_answer';\nconst line = JSON.stringify({ type: 'adjuster_answer', claim_id: r.claim_id, answer, at: new Date().toISOString() }) + '\\n';\nreturn [{ json: { claim_id: r.claim_id, adjuster_answer: answer },\n          binary: { log: { data: Buffer.from(line, 'utf8').toString('base64'), mimeType: 'application/x-ndjson', fileName: 'decisions_log.jsonl' } } }];\n"
+      },
+      "id": "91debac6-639c-5b98-ae42-58605750a1e3",
+      "name": "Adjuster Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/data/claimshield/decisions_log.jsonl",
+        "dataPropertyName": "log",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "b2c5d6f3-9bda-514f-9a46-704cfca761e0",
+      "name": "Append Adjuster Log",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        4720,
+        420
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "slack",
+              "leftValue": "={{ $json.settings.slack_enabled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "1eb8a6cf-b58e-54f0-851f-7f6d958c2509",
+      "name": "Slack On? (fraud)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4060,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.settings.slack_channel }}",
+          "mode": "name"
+        },
+        "text": "={{ $json.slack.fraud_message }}",
+        "otherOptions": {}
+      },
+      "id": "a0e6801a-45a4-5e24-8377-051f3911c37c",
+      "name": "Fraud Alert on Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        4280,
+        600
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "SET_SLACK_CREDENTIAL",
+          "name": "Slack account"
+        }
+      },
+      "webhookId": "87ea977d-4184-5c24-8c85-8255ac8a11ea",
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Claim Form": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim API": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claim": {
+      "main": [
+        [
+          {
+            "node": "Photo Checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Photo Checks": {
+      "main": [
+        [
+          {
+            "node": "Read Photo Register",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Photo Register": {
+      "main": [
+        [
+          {
+            "node": "Register Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Check": {
+      "main": [
+        [
+          {
+            "node": "Validation Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Input": {
+      "main": [
+        [
+          {
+            "node": "Validate Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Claim": {
+      "main": [
+        [
+          {
+            "node": "Claim Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Valid?": {
+      "main": [
+        [
+          {
+            "node": "Visual Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejected Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visual Input": {
+      "main": [
+        [
+          {
+            "node": "Visual Inspection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visual Inspection": {
+      "main": [
+        [
+          {
+            "node": "Invoice Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Input": {
+      "main": [
+        [
+          {
+            "node": "Invoice Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Parser": {
+      "main": [
+        [
+          {
+            "node": "RAG Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG Input": {
+      "main": [
+        [
+          {
+            "node": "Policy RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy RAG": {
+      "main": [
+        [
+          {
+            "node": "Decision Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Input": {
+      "main": [
+        [
+          {
+            "node": "Fraud Risk & Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fraud Risk & Decision": {
+      "main": [
+        [
+          {
+            "node": "Decision Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Record": {
+      "main": [
+        [
+          {
+            "node": "Log Line",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Updated Photo Register",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "From Form?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejected Record": {
+      "main": [
+        [
+          {
+            "node": "Log Line",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Updated Photo Register",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "From Form?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Line": {
+      "main": [
+        [
+          {
+            "node": "Append Decision Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Updated Photo Register": {
+      "main": [
+        [
+          {
+            "node": "Save Photo Register",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Form?": {
+      "main": [
+        [
+          {
+            "node": "Show Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Payment Request (mock)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack On? (review)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack On? (fraud)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Slack On? (review)": {
+      "main": [
+        [
+          {
+            "node": "Ask Adjuster on Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Ask Adjuster on Slack": {
+      "main": [
+        [
+          {
+            "node": "Adjuster Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adjuster Answer": {
+      "main": [
+        [
+          {
+            "node": "Append Adjuster Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack On? (fraud)": {
+      "main": [
+        [
+          {
+            "node": "Fraud Alert on Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": null,
+  "versionId": "45d000fc-6fff-5ba5-91ee-1d1dc6f9d7bd",
+  "tags": []
+}

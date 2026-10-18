@@ -1,0 +1,237 @@
+{
+  "id": "CSIngestMotor01",
+  "name": "01_Policy_Ingestion_Motor",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Policy Ingestion (motor)\nRun once (and again after changing the document).\nReads the policy wording PDF, splits it clause by clause (structural header injection, as in Chedi's ingestion), tags each chunk with clause_id / title / product_scope and stores it in the Qdrant collection **motor_policy_clauses** with NVIDIA embeddings.\n\nBefore a re-run, delete the collection in Qdrant (http://localhost:6333/dashboard) to avoid duplicates.",
+        "width": 460,
+        "height": 240,
+        "color": 5
+      },
+      "id": "41eb0942-1985-5001-80bb-8f56178d08b1",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "030d7fb2-46de-5312-8710-b7a70e10d288",
+      "name": "Run Ingestion",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/data/claimshield/policy/Motor-Policy-Wording.pdf",
+        "options": {}
+      },
+      "id": "5697cc68-8a7d-5f63-8dae-0dec56fb3c32",
+      "name": "Read Policy PDF",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "b86d998a-cf91-50e4-a29b-62170ac858ab",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One chunk per policy clause, with a structural header in the chunk text (as in Chedi's ingestion) and\n// metadata used to filter the search by product: product_scope = 'all' or 'motor_comprehensive'.\nconst text = $input.all().map((i) => i.json.text || '').join('\\n')\n  .replace(/ClaimShield Mutual - fictional policy wording MW-2026\\.1\\s*Page \\d+/g, '\\n');\n// Split only on headings (\"Part B - ...\", \"Clause 2.1 - ...\"), never on references such as \"(Part B)\".\nconst pieces = text.split(/(?=\\b(?:Part [A-Z] - |Clause \\d+\\.\\d+ - ))/);\nconst TITLES = {};\nlet part = '', scope = 'all';\nconst out = [];\nfor (const raw of pieces) {\n  const lines = raw.trim().split(/\\r?\\n/).map((l) => l.trim()).filter(Boolean);\n  if (!lines.length) continue;\n  const p = lines[0].match(/^Part ([A-Z]) - /);\n  if (p) {   // the heading may wrap over two lines: use the whole piece\n    part = lines.join(' ').replace(/\\s+/g, ' ').trim();\n    scope = /motor_comprehensive only/i.test(part) ? 'motor_comprehensive' : 'all';\n    continue;\n  }\n  const c = lines[0].match(/^Clause (\\d+\\.\\d+) - (.*)$/);\n  if (!c) continue;\n  let title = c[2].trim();\n  let body = lines.slice(1).join(' ').replace(/\\s+/g, ' ').trim();\n  if (!body) {   // heading and text on one line: the title ends where the first sentence starts\n    const m = title.match(/^(.{3,80}?)\\s+((?:The|There|This|Cover|For|If|Damage|Parts|Painting|Towing|Bodily|Tyres|Any)\\b.*)$/);\n    if (m) { title = m[1]; body = m[2]; }\n  }\n  const clause_id = `C-${c[1]}`;\n  if (TITLES[clause_id]) continue;\n  TITLES[clause_id] = title;\n  const applies = scope === 'all' ? 'all motor products' : 'motor_comprehensive only';\n  out.push({\n    json: {\n      pageContent: `[ClaimShield Motor Policy | ${part} | ${clause_id} ${title} | applies to: ${applies}] ${body}`,\n      metadata: { clause_id, title, part, product_scope: scope, source: 'Motor-Policy-Wording.pdf' },\n    },\n  });\n}\nif (!out.length) throw new Error('No clause found in the policy text: check the PDF');\nreturn out;\n"
+      },
+      "id": "9f85e27c-d1b6-5e5a-93b5-996860fa31f5",
+      "name": "Split Into Clauses",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "motor_policy_clauses",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "1c003f6f-633e-5a99-a305-b975077ee940",
+      "name": "Qdrant Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        900,
+        0
+      ],
+      "credentials": {
+        "qdrantApi": {
+          "id": "DA9IF6z39EiJXHZ8",
+          "name": "Local_Qdrant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-embed-1b",
+        "options": {}
+      },
+      "id": "efbc92a8-f60a-5f9f-9b43-a2b01074f2dc",
+      "name": "Embeddings NVIDIA",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        840,
+        240
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "SPONP3X9OugaVEBi",
+          "name": "NVIDIA_NIM_Free"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.pageContent }}",
+        "textSplittingMode": "simple",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "clause_id",
+                "value": "={{ $json.metadata.clause_id }}"
+              },
+              {
+                "name": "title",
+                "value": "={{ $json.metadata.title }}"
+              },
+              {
+                "name": "part",
+                "value": "={{ $json.metadata.part }}"
+              },
+              {
+                "name": "product_scope",
+                "value": "={{ $json.metadata.product_scope }}"
+              },
+              {
+                "name": "source",
+                "value": "={{ $json.metadata.source }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "7c5262be-6361-5dd2-abd1-3c846b778da3",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1020,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Run Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Read Policy PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Policy PDF": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Split Into Clauses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Clauses": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings NVIDIA": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": null,
+  "versionId": "fcb5e241-32a2-5650-a0e3-4a4871f11d75",
+  "tags": []
+}

@@ -1,0 +1,422 @@
+{
+  "name": "05_Validation_Fraud_Decision_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Validation & Fraud Decision Agent\nCalled twice by the orchestrator:\n1. **stage = validate**: required fields, policy lookup, coverage dates. Runs before any AI call.\n2. **stage = decide**: rule score (max 60) + LLM adjustment (max 40), then route: auto_approve, human_review or fraud_investigation.\n\nTo test alone: open **Test Data**, set STAGE, click **Execute workflow**.\n\n**Integration copy** (ClaimShield orchestrator): policies and claim history come from `data/claimshield/*.csv`; see INTEGRATION_CHANGES.md.",
+        "height": 300,
+        "width": 420,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "51048435-e6f3-44ad-9cef-16df56ac11be",
+      "name": "About"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        384
+      ],
+      "id": "dbdd1a9c-0816-4b01-b4c2-a1d09306df8b",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        592
+      ],
+      "id": "11ee0304-42e7-4322-ad95-183abed05002",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sample input for testing this workflow on its own.\n// Set STAGE to 'validate' or 'decide', then click \"Execute workflow\".\nconst STAGE = 'validate';\n\nconst claim = {\n  claim_id: 'CLM-0001',\n  policy_id: 'POL-1001',\n  incident_date: '2026-10-10',\n  incident_location: 'Tunis',\n  description: 'Rear-ended at a red light. Rear bumper and trunk lid damaged.',\n  claimed_amount: 1450,\n  photo_count: 3,\n  photo_taken_dates: ['2026-10-10', '2026-10-10', '2026-10-11'],\n  photo_reused: false,\n  has_invoice: true,\n};\n\nif (STAGE === 'validate') {\n  return [{ json: { stage: 'validate', claim } }];\n}\n\n// In the real pipeline the orchestrator passes the output of the validate stage\n// and of the three agents. These samples follow their current output formats.\nreturn [{\n  json: {\n    stage: 'decide',\n    claim,\n    validation: {\n      valid: true,\n      reasons: [],\n      policy: {\n        policy_id: 'POL-1001', product: 'motor_comprehensive', status: 'active',\n        start_date: '2026-01-15', end_date: '2027-01-14',\n        deductible: 300, coverage_limit: 15000, auto_approval_limit: 2000,\n      },\n      policy_age_days: 268,\n      claims_last_12m: 1,\n    },\n    // Visual Inspection Agent (Fedi)\n    visual: {\n      claim_id: 'CLM-0001',\n      damage_severity: 2,\n      damaged_parts: ['pare-choc arriere', 'coffre'],\n      impact_zone: 'arriere',\n      matches_description: true,\n      mismatch_reason: '',\n      pre_existing_damage_signs: false,\n      pre_existing_reason: '',\n      same_vehicle_across_photos: true,\n      suspicious_image_flags: [],\n    },\n    // Invoice Parser Agent (format still to be agreed)\n    invoice: {\n      totals_match: true,\n      total: 1450,\n      line_items: [\n        { part: 'Pare-choc arrière', type: 'part', quantity: 1, unit_price: 620 },\n        { part: 'Coffre', type: 'part', quantity: 1, unit_price: 480 },\n        { part: 'Main d\\'oeuvre', type: 'labor', quantity: 5, unit_price: 70 },\n      ],\n    },\n    // Policy RAG Agent (Chedi)\n    policy_rag: {\n      coverage_status: 'COVERED',\n      cited_clauses: ['Section 4.2 - Collision damage'],\n      reasoning: 'Collision damage to the insured vehicle is covered.',\n      flagged_exclusions: [],\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        592
+      ],
+      "id": "68d98858-5177-48f7-8976-cc607adc92dc",
+      "name": "Test Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d5bc9c01-07c6-4add-86ba-443fcf79cae4",
+              "leftValue": "={{ $json.stage }}",
+              "rightValue": "decide",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        464,
+        464
+      ],
+      "id": "18aebe40-97ea-4c8c-b3da-17d404abb9fa",
+      "name": "Stage is decide?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Checks that the claim has every required field before anything else runs.\nreturn $input.all().map(item => {\n  const claim = item.json.claim ?? item.json;\n  const errors = [];\n\n  for (const f of ['claim_id', 'policy_id', 'incident_date', 'description', 'claimed_amount']) {\n    if (claim[f] === undefined || claim[f] === null || String(claim[f]).trim() === '') {\n      errors.push(`Missing field: ${f}`);\n    }\n  }\n\n  if (claim.incident_date) {\n    const d = new Date(claim.incident_date);\n    if (isNaN(d)) errors.push('incident_date is not a valid date');\n    else if (d > new Date()) errors.push('incident_date is in the future');\n  }\n\n  const amount = Number(claim.claimed_amount);\n  if (claim.claimed_amount !== undefined && !(amount > 0)) {\n    errors.push('claimed_amount must be a positive number');\n  }\n\n  const photos = Number(claim.photo_count ?? 0);\n  if (photos < 1 || photos > 8) errors.push('photo_count must be between 1 and 8');\n\n  if (claim.has_invoice === false) errors.push('Repair invoice is missing');\n\n  return { json: { claim: { ...claim, claimed_amount: amount }, field_errors: errors } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        224
+      ],
+      "id": "568129dd-8962-44ed-bc69-791696b80e47",
+      "name": "Check Required Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decides whether the claim can go on to the AI agents.\n// An invalid claim is rejected here, before any AI call.\nconst DAY = 24 * 60 * 60 * 1000;\n\nreturn $input.all().map(item => {\n  const { claim, policy, field_errors, prior_claim_dates } = item.json;\n  const reasons = [...field_errors];\n  let policy_age_days = null;\n  let claims_last_12m = 0;\n\n  if (!policy) {\n    reasons.push(`Policy ${claim.policy_id} not found`);\n  } else {\n    const incident = new Date(claim.incident_date);\n    const start = new Date(policy.start_date);\n    const end = new Date(policy.end_date);\n\n    if (policy.status !== 'active') reasons.push(`Policy status is ${policy.status}`);\n    if (incident < start || incident > end) {\n      reasons.push(`Incident date ${claim.incident_date} is outside the coverage period (${policy.start_date} to ${policy.end_date})`);\n    }\n\n    policy_age_days = Math.floor((incident - start) / DAY);\n    claims_last_12m = prior_claim_dates.filter(d => {\n      const t = new Date(d);\n      return t <= incident && incident - t <= 365 * DAY;\n    }).length;\n  }\n\n  return {\n    json: {\n      stage: 'validate',\n      claim_id: claim.claim_id,\n      valid: reasons.length === 0,\n      reasons,\n      policy,\n      policy_age_days,\n      claims_last_12m,\n      amount_over_coverage_limit: policy ? claim.claimed_amount > policy.coverage_limit : null,\n      checked_at: new Date().toISOString(),\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        224
+      ],
+      "id": "dc952e33-b2a9-4886-847f-1699fb41ff24",
+      "name": "Eligibility Check"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rule-based part of the risk score (max 60), from section 4.6 of the design.\n// Every point comes with a warning sign that explains it.\nconst norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();\n\nreturn $input.all().map(item => {\n  const { claim = {}, validation = {}, visual, invoice, policy_rag } = item.json;\n  const signs = [];\n  const add = (code, points, detail) => signs.push({ code, points, detail });\n\n  // An agent that failed or was skipped must not count as \"no problem found\".\n  const missing_inputs = [];\n  if (!visual || visual.error) missing_inputs.push('visual');\n  if (!invoice || invoice.error) missing_inputs.push('invoice');\n  if (!policy_rag || policy_rag.error) missing_inputs.push('policy_rag');\n  const v = visual && !visual.error ? visual : {};\n  const inv = invoice && !invoice.error ? invoice : {};\n  // [integration] the invoice agent can return status needs_review (amounts it could not verify) and fraud\n  // warnings (claimed amount vs invoice total, invoice dated before the incident, duplicate line): they add no\n  // points but always send the claim to a human.\n  const review_flags = [];\n  if (inv.status === 'needs_review') review_flags.push(`Invoice could not be fully verified (${(inv.review_reasons || []).join(', ') || 'needs review'})`);\n  for (const w of inv.warnings || []) review_flags.push(`Invoice: ${w}`);\n\n  if (claim.photo_reused === true || v.photo_reused === true) {\n    add('PHOTO_REUSED', 40, 'Same photo already used in another claim');\n  }\n\n  if (v.matches_description === false) {\n    add('DAMAGE_MISMATCH', 20, v.mismatch_reason || 'Visible damage inconsistent with the described accident');\n  }\n\n  if (inv.totals_match === false) {\n    add('INVOICE_ARITHMETIC', 15, inv.arithmetic_issue || 'Invoice arithmetic does not add up');\n  }\n\n  const incident = new Date(claim.incident_date);\n  const early = (claim.photo_taken_dates || []).filter(d => new Date(d) < incident);\n  if (early.length) {\n    add('PHOTO_BEFORE_INCIDENT', 15, `${early.length} photo(s) dated before the incident date`);\n  }\n\n  // [integration] Invoiced parts are compared with the parts seen on the photos through one canonical name\n  // per part, French or English (the visual agent answers in French, invoices are often in English).\n  // Only lines of type \"part\" are compared: paint, consumables and fees (type \"other\") are never on a photo.\n  const PART_NAMES = [\n    ['bumper', /\\b(bumpers?|pare[- ]?chocs?)\\b/],\n    ['bonnet', /\\b(bonnet|hood|capot)\\b/],\n    ['wing', /\\b(wings?|fenders?|ailes?|quarter panels?)\\b/],\n    ['door', /\\b(doors?|portes?|portieres?)\\b/],\n    ['boot', /\\b(boot|trunk|tailgate|boot lid|trunk lid|coffre|hayon)\\b/],\n    ['headlight', /\\b(head ?lights?|head ?lamps?|phares?|projecteurs?|optiques? avant)\\b/],\n    ['tail light', /\\b(tail ?lights?|rear lights?|feux? arriere|optiques? arriere)\\b/],\n    ['fog light', /\\b(fog ?lights?|fog ?lamps?|antibrouillards?)\\b/],\n    ['grille', /\\b(grille|calandre)\\b/],\n    ['mirror', /\\b(mirrors?|retroviseurs?)\\b/],\n    ['windscreen', /\\b(windscreen|windshield|pare[- ]?brise)\\b/],\n    ['rear window', /\\b(rear window|rear screen|lunette arriere)\\b/],\n    ['side window', /\\b(side windows?|vitres?|glaces? laterales?)\\b/],\n    ['radiator', /\\b(radiators?|radiateurs?)\\b/],\n    ['wheel', /\\b(wheels?|rims?|jantes?|roues?)\\b/],\n    ['tyre', /\\b(tyres?|tires?|pneus?)\\b/],\n    ['roof', /\\b(roof|toit|pavillon)\\b/],\n    ['sill', /\\b(sills?|rocker panels?|bas de caisse)\\b/],\n  ];\n  // front / rear is kept: a rear bumper on the photos does not make a front bumper on the invoice visible\n  const position = (t) => /\\b(front|avant|av)\\b/.test(t) ? 'front' : /\\b(rear|back|arriere|ar)\\b/.test(t) ? 'rear' : null;\n  const canon = (s) => {\n    const t = norm(s);\n    const pos = position(t);\n    const hits = PART_NAMES.filter(([, re]) => re.test(t)).map(([k]) => ({ key: k, pos: k === 'tail light' || k === 'rear window' ? 'rear' : pos }));\n    return hits.length ? hits : [{ key: t, pos, raw: true }];\n  };\n  const same = (a, b) => (a.raw || b.raw ? (a.key.includes(b.key) || b.key.includes(a.key)) : a.key === b.key)\n    && !(a.pos && b.pos && a.pos !== b.pos);\n  const seen = (v.damaged_parts || []).flatMap(canon);\n  const notVisible = (inv.line_items || [])\n    .filter(li => li.part && li.type === 'part')\n    .filter(li => !canon(li.part).some(p => seen.some(s => same(p, s))))\n    .map(li => li.part);\n  if (notVisible.length && missing_inputs.indexOf('visual') === -1) {\n    add('PART_NOT_VISIBLE', Math.min(notVisible.length * 5, 15), `Invoiced part(s) not visible in photos: ${notVisible.join(', ')}`);\n  }\n\n  if (v.pre_existing_damage_signs === true) {\n    add('PRE_EXISTING_DAMAGE', 10, v.pre_existing_reason || 'Signs of pre-existing damage');\n  }\n\n  if (validation.policy_age_days !== null && validation.policy_age_days !== undefined && validation.policy_age_days < 30) {\n    add('NEW_POLICY', 10, `Policy only ${validation.policy_age_days} days old at the incident date`);\n  }\n\n  if ((validation.claims_last_12m ?? 0) >= 3) {\n    add('FREQUENT_CLAIMS', 10, `${validation.claims_last_12m} claims in the last 12 months`);\n  }\n\n  const raw = signs.reduce((sum, s) => sum + s.points, 0);\n\n  return {\n    json: {\n      ...item.json,\n      rule_score: Math.min(raw, 60),\n      rule_score_uncapped: raw,\n      warning_signs: signs,\n      missing_inputs,\n      review_flags,\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        624
+      ],
+      "id": "76678e6a-2bf6-4fe6-a4ad-1998ac6be84d",
+      "name": "Rule Score"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are the Fraud Risk & Decision Agent of ClaimShield AI, reviewing a motor insurance damage claim.\n\nThe rule engine has already scored objective warning signs. Your job is to add nuance: look for inconsistencies between the claim, the photo analysis, the invoice and the policy result that the rules did NOT already count.\n\nCLAIM:\n{{ JSON.stringify($json.claim, null, 2) }}\n\nPOLICY CHECK:\n{{ JSON.stringify($json.validation, null, 2) }}\n\nVISUAL INSPECTION RESULT:\n{{ JSON.stringify($json.visual ?? null, null, 2) }}\n\nINVOICE RESULT:\n{{ JSON.stringify($json.invoice ?? null, null, 2) }}\n\nPOLICY COVERAGE RESULT:\n{{ JSON.stringify($json.policy_rag ?? null, null, 2) }}\n\nWARNING SIGNS ALREADY SCORED BY RULES (rule score {{ $json.rule_score }}/60):\n{{ JSON.stringify($json.warning_signs, null, 2) }}\n\nRULES FOR YOUR ANSWER:\n1. llm_adjustment is an integer from 0 to 40. Use 0 when you find nothing beyond the rules.\n2. Never re-count a warning sign that is already listed above.\n3. Every point you add must be explained in justification, citing the specific fields that support it.\n4. Base your answer only on the data above. Do not guess.\n5. Example concerns: claimed amount far above what the damage severity suggests, impact zone that does not fit the description, incident location or timing that seems implausible.\n\nReturn ONLY a raw JSON object, with no markdown and no text around it:\n{\n  \"llm_adjustment\": <integer 0-40>,\n  \"justification\": \"<one or two sentences>\",\n  \"additional_concerns\": [\"<short concern>\"]\n}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        960,
+        624
+      ],
+      "id": "50b26c6c-346d-4ecb-b59f-3b481510be51",
+      "name": "LLM Risk Assessment",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combines the rule score with the LLM adjustment and picks the route.\n// Thresholds from section 4.6; move them to a config table later.\nconst CONFIG = {\n  auto_approve_below: 20,\n  investigate_at: 50,\n  min_signs_for_investigation: 2,\n  llm_max: 40,\n};\n\nconst rules = $('Rule Score').all();\n\nreturn $input.all().map((item, i) => {\n  const base = rules[i].json;\n\n  // Some models write their reasoning (<think>...</think>) or extra text\n  // around the JSON, so look for the last object that has llm_adjustment.\n  const llm_raw = String(item.json.text ?? item.json.output ?? '');\n  const raw = llm_raw\n    .replace(/<think>[\\s\\S]*?<\\/think>/gi, '')\n    .replace(/```json|```/g, '')\n    .trim();\n  let llm = { llm_adjustment: 0, justification: '', additional_concerns: [] };\n  let llm_error = null;\n  let parsed = null;\n  const candidates = [raw, ...(raw.match(/\\{[^{}]*\\}/g) || []).reverse()];\n  for (const c of candidates) {\n    try {\n      const p = JSON.parse(c);\n      if (p && typeof p === 'object' && 'llm_adjustment' in p) { parsed = p; break; }\n    } catch (e) { /* try the next candidate */ }\n  }\n  if (parsed) llm = { ...llm, ...parsed };\n  else llm_error = llm_raw.trim() ? 'LLM output did not contain the expected JSON (see llm_raw)' : 'LLM returned an empty answer';\n\n  let adj = Math.round(Number(llm.llm_adjustment));\n  if (!Number.isFinite(adj)) adj = 0;\n  adj = Math.max(0, Math.min(adj, CONFIG.llm_max));\n  // The design requires every LLM adjustment to be justified in writing.\n  if (adj > 0 && !String(llm.justification || '').trim()) adj = 0;\n\n  const risk = Math.min(base.rule_score + adj, 100);\n  const policy = base.validation?.policy || {};\n  const amount = Number(base.claim?.claimed_amount);\n  const limit = Number(policy.auto_approval_limit ?? 0);\n  const coverage = base.policy_rag?.coverage_status ?? 'UNKNOWN';\n  const signs = base.warning_signs;\n  const reused = signs.some(s => s.code === 'PHOTO_REUSED');\n\n  // Investigation needs a reused photo or two independent rule-based signs,\n  // so the LLM can never trigger an investigation on its own.\n  let route;\n  const route_reasons = [];\n  if (reused) {\n    route = 'fraud_investigation';\n    route_reasons.push('Reused photo');\n  } else if (risk >= CONFIG.investigate_at && signs.length >= CONFIG.min_signs_for_investigation) {\n    route = 'fraud_investigation';\n    route_reasons.push(`Risk score ${risk} with ${signs.length} warning signs`);\n  } else {\n    if (risk >= CONFIG.auto_approve_below) route_reasons.push(`Risk score ${risk} is ${CONFIG.auto_approve_below} or above`);\n    if (!(amount <= limit)) route_reasons.push(`Amount ${amount} is above the auto-approval limit ${limit}`);\n    if (coverage !== 'COVERED') route_reasons.push(`Coverage result is ${coverage}`);\n    if (base.missing_inputs.length) route_reasons.push(`Missing agent results: ${base.missing_inputs.join(', ')}`);\n    if (llm_error) route_reasons.push('LLM assessment failed');\n    for (const f of base.review_flags || []) route_reasons.push(f);   // [integration]\n    route = route_reasons.length ? 'human_review' : 'auto_approve';\n    if (route === 'auto_approve') route_reasons.push(`Risk score ${risk} below ${CONFIG.auto_approve_below}, amount within limit, covered`);\n  }\n\n  return {\n    json: {\n      stage: 'decide',\n      claim_id: base.claim?.claim_id,\n      route,\n      route_reasons,\n      risk_score: risk,\n      rule_score: base.rule_score,\n      llm_adjustment: adj,\n      warning_signs: signs,\n      coverage: {\n        status: coverage,\n        cited_clauses: base.policy_rag?.cited_clauses ?? [],\n        reasoning: base.policy_rag?.reasoning ?? '',\n      },\n      justification: llm.justification,\n      additional_concerns: llm.additional_concerns ?? [],\n      missing_inputs: base.missing_inputs,\n      review_flags: base.review_flags || [],\n      llm_error,\n      llm_raw: llm_error ? llm_raw.slice(0, 3000) : undefined,\n      decided_at: new Date().toISOString(),\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        624
+      ],
+      "id": "7f5ba837-163f-4150-a68b-2c4e1e65dc10",
+      "name": "Decide Route"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.7-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        832
+      ],
+      "id": "eda3d923-4b67-4162-859e-b1bd2647931c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "SET_GEMINI_CREDENTIAL",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the policy and claim-history rows into the format Eligibility Check expects.\n// [integration] rows come from /data/claimshield/policies.csv and claims_history.csv (same columns\n// as the Airtable tables), so the system runs without an Airtable account.\n// Works whether Airtable puts the columns at the top level or inside \"fields\".\nconst row = r => r.fields ?? r;\nconst claimItem = $('Check Required Fields').first().json;\nconst found = $('Parse Policies').all().map(i => row(i.json))\n  .filter(r => r.policy_id && String(r.policy_id).trim() === String(claimItem.claim.policy_id).trim());\nconst history = $('Parse Claims History').all().map(i => row(i.json))\n  .filter(r => r.incident_date && String(r.policy_id).trim() === String(claimItem.claim.policy_id).trim());\n\nconst p = found[0];\nconst policy = p ? {\n  policy_id: p.policy_id,\n  product: p.product,\n  status: String(p.status).toLowerCase().trim(),\n  start_date: String(p.start_date).slice(0, 10),\n  end_date: String(p.end_date).slice(0, 10),\n  deductible: Number(p.deductible),\n  coverage_limit: Number(p.coverage_limit),\n  auto_approval_limit: Number(p.auto_approval_limit),\n} : null;\n\nreturn [{\n  json: {\n    ...claimItem,\n    policy,\n    prior_claim_dates: history\n      .filter(c => c.claim_id !== claimItem.claim.claim_id)\n      .map(c => String(c.incident_date).slice(0, 10)),\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        224
+      ],
+      "id": "62c4bd27-7424-4cee-8efc-7a89277736ac",
+      "name": "Policy Lookup"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/data/claimshield/policies.csv",
+        "options": {}
+      },
+      "id": "b95eba66-b45b-5c6d-80e7-a3d1d5db8656",
+      "name": "Read Policies CSV",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        944,
+        224
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "659323a2-3587-5fc8-a442-25f8b37b638a",
+      "name": "Parse Policies",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1056,
+        384
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "fileSelector": "/data/claimshield/claims_history.csv",
+        "options": {}
+      },
+      "id": "f97055cb-0ab3-577f-8439-7eb18eadd460",
+      "name": "Read Claims History CSV",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1168,
+        224
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "7b8d3709-5e3e-5141-91bf-103acdc10a27",
+      "name": "Parse Claims History",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        384
+      ],
+      "alwaysOutputData": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Stage is decide?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Test Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Data": {
+      "main": [
+        [
+          {
+            "node": "Stage is decide?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage is decide?": {
+      "main": [
+        [
+          {
+            "node": "Rule Score",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Read Policies CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule Score": {
+      "main": [
+        [
+          {
+            "node": "LLM Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Risk Assessment": {
+      "main": [
+        [
+          {
+            "node": "Decide Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "LLM Risk Assessment",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Lookup": {
+      "main": [
+        [
+          {
+            "node": "Eligibility Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Policies CSV": {
+      "main": [
+        [
+          {
+            "node": "Parse Policies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Policies": {
+      "main": [
+        [
+          {
+            "node": "Read Claims History CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Claims History CSV": {
+      "main": [
+        [
+          {
+            "node": "Parse Claims History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claims History": {
+      "main": [
+        [
+          {
+            "node": "Policy Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c0f3d2a1-bf97-4f18-acba-570c5af41d11",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f855807136de3bb627dfdb74ebd79e17ad873a503ef00a59730c1031c28635c"
+  },
+  "nodeGroups": [],
+  "id": "CSDecision05",
+  "tags": []
+}

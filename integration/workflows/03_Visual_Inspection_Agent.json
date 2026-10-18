@@ -1,0 +1,205 @@
+{
+  "name": "03_Visual_Inspection_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "afba5b99-6dfa-4331-a547-2fe51058fa02",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "formTitle": "Test Visual Inspection",
+        "formDescription": "Formulaire de test pour l'agent d'inspection visuelle",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "claim_id"
+            },
+            {
+              "fieldLabel": "description",
+              "fieldType": "textarea"
+            },
+            {
+              "fieldLabel": "incident_date",
+              "fieldType": "date"
+            },
+            {
+              "fieldLabel": "photos",
+              "fieldType": "file",
+              "acceptFileTypes": ".jpg,.jpeg,.png"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        -144
+      ],
+      "id": "71d29416-3eff-4842-a134-57009a2dc903",
+      "name": "On form submission",
+      "webhookId": "3d148bd5-958a-49a7-b6fb-a230b3bef46f"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.8-flash",
+          "mode": "list",
+          "cachedResultName": "Gemini 3.8 Flash"
+        },
+        "text": "=Tu es un expert en expertise automobile pour une compagnie d'assurance. Analyse TOUTES les photos jointes d'un sinistre.\n\nDescription de l'accident fournie par l'assuré : {{ $json.description }}\nIdentifiant du dossier : {{ $json.claim_id }}\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans texte autour. N'utilise aucune balise markdown, ne commence pas par ```json. Utilise exactement ces clés :\n{\n  \"claim_id\": \"<identifiant du dossier>\",\n  \"damage_severity\": <entier de 1 (léger) à 5 (très grave)>,\n  \"damaged_parts\": [<pièces visiblement endommagées>],\n  \"impact_zone\": \"<avant | arriere | cote_gauche | cote_droit | toit | multiple | inconnu>\",\n  \"matches_description\": <true ou false>,\n  \"mismatch_reason\": \"<explication courte si false, sinon chaîne vide>\",\n  \"pre_existing_damage_signs\": <true ou false>,\n  \"pre_existing_reason\": \"<rouille, peinture écaillée, saleté dans les rayures... sinon chaîne vide>\",\n  \"same_vehicle_across_photos\": <true ou false>,\n  \"vehicle_inconsistency_reason\": \"<couleur, modèle différent... sinon chaîne vide>\",\n  \"suspicious_image_flags\": [<uniquement des défauts techniques des images : \"filigrane de banque d'images\", \"capture d'écran\", \"image retouchée\". Ne répète pas ici l'incohérence de véhicule.>],\n  \"confidence\": <nombre entre 0 et 1>,\n  \"summary\": \"<une phrase factuelle décrivant ce qui est visible. Ne conclus jamais à une fraude.>\"\n}\n\nRègles :\n- Ne fais AUCUNE vérification de dates : elle est faite ailleurs.\n- Ne devine pas : si une information n'est pas visible, utilise \"inconnu\" ou false.\n- Baisse la confiance (maximum 0.7) si les photos ne montrent pas le même véhicule ou si elles sont de mauvaise qualité.",
+        "inputType": "binary",
+        "binaryPropertyName": "={{ Object.keys($binary).join(',') }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        528,
+        96
+      ],
+      "id": "0cdace3c-918d-409a-add4-fc8b3837c418",
+      "name": "Analyze an image",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "SET_GEMINI_CREDENTIAL",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.content?.parts?.[0]?.text ?? $input.first().json.text ?? '';\nconst cleaned = raw.replace(/```json|```/g, '').trim();\n\nlet result;\ntry {\n  result = JSON.parse(cleaned);\n} catch (e) {\n  result = {\n    claim_id: $('Input').first().json.claim_id,\n    error: true,\n    error_message: 'Réponse du modèle non valide : ' + e.message,\n    raw_response: raw\n  };\n}\nreturn [{ json: result }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        176
+      ],
+      "id": "58dbce8e-5bbb-45d2-9e29-52560ccc9efb",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0201218-d27b-4693-95d0-9f58b290ce7b",
+              "name": "claim_id",
+              "value": "={{ $json.claim_id }}",
+              "type": "string"
+            },
+            {
+              "id": "6a6b6548-1c07-4c9c-ba26-392a3d11294c",
+              "name": "description",
+              "value": "={{ $json.description }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        384,
+        240
+      ],
+      "id": "93bd264f-fb59-4a39-9059-a623be4c3de3",
+      "name": "Input"
+    },
+    {
+      "parameters": {
+        "content": "## Visual Inspection Agent\nCalled by the orchestrator with the claim fields and the damage photos as binary files (photo_0, photo_1, ...). All photos are analysed in one Gemini call. Test alone with the form trigger.",
+        "width": 380,
+        "height": 200,
+        "color": 5
+      },
+      "id": "41eb0942-1985-5001-80bb-8f56178d08b1",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -260
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input": {
+      "main": [
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "491a20c0-dc43-49ee-9633-7c76effa2469",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f855807136de3bb627dfdb74ebd79e17ad873a503ef00a59730c1031c28635c"
+  },
+  "nodeGroups": [],
+  "id": "CSVisualAgent03",
+  "tags": []
+}
