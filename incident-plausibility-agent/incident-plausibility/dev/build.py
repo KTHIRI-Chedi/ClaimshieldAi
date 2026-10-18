@@ -2,6 +2,11 @@
 
 Prompts live in ./prompts as versioned files. ACTIVE picks which version goes into the
 workflow; dev/eval/run_eval.js compares versions on the labeled test claims.
+
+Usage:
+    python dev/build.py incident_plausibility_agent.json                API version (Groq by default)
+    python dev/build.py incident_plausibility_agent_local.json --local  fine-tuned model in Ollama,
+                                                                        no API, no key, no credential
 """
 import json
 import sys
@@ -10,7 +15,22 @@ from pathlib import Path
 
 SRC = Path(__file__).parent / "src"
 PROMPTS = Path(__file__).parent / "prompts"
-OUT = Path(sys.argv[1])
+OUT = Path([a for a in sys.argv[1:] if not a.startswith("--")][0])
+LOCAL = "--local" in sys.argv
+
+# --local: both LLM steps on Ollama (extraction: base qwen2.5:3b, reconstruction: the fine-tuned
+# claimshield-recon with its short ft1 prompt). Replaced in the LLM settings node.
+LOCAL_SETTINGS = [
+    ("""const PROVIDER = {
+  extraction: 'groq',
+  reconstruction: 'groq', // 'ollama' to use the fine-tuned model (see dev/finetune/README.md)
+};""",
+     """const PROVIDER = {
+  extraction: 'ollama',      // base qwen2.5:3b reads the story ('groq' here = better extraction, needs a key)
+  reconstruction: 'ollama',  // the fine-tuned claimshield-recon (dev/finetune)
+};"""),
+    ("const RECONSTRUCTION_PROMPT = 'v2';", "const RECONSTRUCTION_PROMPT = 'ft1'; // the prompt the fine-tuned model was trained with"),
+]
 
 ACTIVE = {
     "extraction": "extraction.v3.js",
@@ -43,6 +63,10 @@ def code(name):
     if "// __PROMPTS_RECONSTRUCTION__" in js:
         js = js.replace("// __PROMPTS_RECONSTRUCTION__", prompts_block(ACTIVE["reconstruction"]))
     assert "__PROMPT" not in js and "__VOCAB__" not in js and "__GROUNDING__" not in js, name
+    if LOCAL and name == "llm_settings.js":
+        for a, b in LOCAL_SETTINGS:
+            assert js.count(a) == 1, a
+            js = js.replace(a, b)
     return js
 
 
@@ -90,16 +114,18 @@ def geocode(name, url_expr, pos):
 def llm_call(name, role, pos):
     # Any OpenAI-compatible provider: URL and body come from the request builder (see
     # "LLM settings"); the key is a Header Auth credential "Authorization: Bearer <key>".
+    # Local version: Ollama needs no key, so no credential; CPU answers get a longer timeout.
+    auth = {"authentication": "none"} if LOCAL else {
+        "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth"}
     add(name, "n8n-nodes-base.httpRequest", 4.2, pos, {
         "method": "POST",
         "url": "={{ $json.url }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        **auth,
         "sendBody": True,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {
-            "timeout": 120000,
+            "timeout": 300000 if LOCAL else 120000,
             # Pause between the calls of one node (the 3 reconstruction calls), from LLM settings.
             "batching": {"batch": {"batchSize": 1,
                                    "batchInterval": "={{ $('LLM settings').first().json.providers." + role + ".callIntervalMs }}"}},
@@ -177,10 +203,14 @@ add("Note", "n8n-nodes-base.stickyNote", 1, [0, -260], {
         "Checks the claimant's story against the real world (OpenStreetMap, Open-Meteo) and the repair invoice "
         "against an LLM reconstruction of the incident. It never sees the photos: the Visual Inspection agent "
         "covers those.\n\n"
-        "**Setup:** pick the AI provider in **LLM settings** (default: Groq, free). On both LLM nodes, select a "
-        "Header Auth credential with Name `Authorization` and Value `Bearer <your key>`. Put your team contact "
-        "in the Nominatim User-Agent. Run **Manual test** to try the sample claim.\n\n"
-        "**Output (last node):** the shared ClaimShield agent result: score, score_max, weighted_score, "
+        + (("**Local version:** both AI steps run in **Ollama** on this computer (fine-tuned "
+            "`claimshield-recon` + base `qwen2.5:3b`): no API, no key, no credential. Ollama must be running "
+            "with both models (see SETUP.md A3). Put your team contact in the Nominatim User-Agent. "
+            "Run **Manual test** to try the sample claim (a few minutes on a CPU).\n\n") if LOCAL else
+           ("**Setup:** pick the AI provider in **LLM settings** (default: Groq, free). On both LLM nodes, select a "
+            "Header Auth credential with Name `Authorization` and Value `Bearer <your key>`. Put your team contact "
+            "in the Nominatim User-Agent. Run **Manual test** to try the sample claim.\n\n"))
+        + "**Output (last node):** the shared ClaimShield agent result: score, score_max, weighted_score, "
         "warning_signs[] with points, confidence and evidence, summary, details. "
         "See contracts/agent_result.schema.json."
     ),
@@ -224,7 +254,7 @@ link("Reconstruct incident x3 (LLM)", "Score and assemble")
 link("Score and assemble", "Plausibility score (output)")
 
 workflow = {
-    "name": "ClaimShield - Incident Plausibility Agent",
+    "name": "ClaimShield - Incident Plausibility Agent" + (" (local fine-tuned)" if LOCAL else ""),
     "nodes": nodes,
     "connections": conns,
     "settings": {"executionOrder": "v1"},

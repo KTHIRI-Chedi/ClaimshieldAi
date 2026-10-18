@@ -6,7 +6,8 @@ Everything is in this folder; nothing else in the repo is changed.
 
 | Folder / file | What it is |
 |---|---|
-| `incident-plausibility/incident_plausibility_agent.json` | **The n8n workflow to import** (24 nodes). Ends with **Plausibility score (output)** |
+| `incident-plausibility/incident_plausibility_agent_local.json` | **The n8n workflow, local version**: both AI steps on **Ollama** (fine-tuned `claimshield-recon` + base `qwen2.5:3b`). No API, no key, no credential |
+| `incident-plausibility/incident_plausibility_agent.json` | **The n8n workflow, API version**: Groq by default (or Gemini/OpenRouter/OpenAI), needs a key. Use it if the laptop is too slow for local models |
 | `incident-plausibility/README.md` | How the agent works, its warning signs, tests, known limits |
 | `incident-plausibility/PROMPTS.md` | Versioned prompt library: techniques, failure cases, before/after (for the report) |
 | `incident-plausibility/explainer.html` | One-page visual explanation, for the demo |
@@ -28,14 +29,18 @@ Everything is in this folder; nothing else in the repo is changed.
 
 ## Integrating into this repo's `integration/` setup
 
-**1. Import the agent** (same method as `integration/README_INTEGRATION.md`):
+**1. Import the agent.** Choose one of the two versions. The local one uses the fine-tuned model and needs Ollama running with `claimshield-recon` and `qwen2.5:3b` (SETUP.md part A3).
 ```
-docker cp incident-plausibility-agent\incident-plausibility\incident_plausibility_agent.json claimshield_n8n:/tmp/06_incident_plausibility.json
+docker cp incident-plausibility-agent\incident-plausibility\incident_plausibility_agent_local.json claimshield_n8n:/tmp/06_incident_plausibility.json
 docker exec claimshield_n8n n8n import:workflow --input=/tmp/06_incident_plausibility.json
 ```
-Or in the n8n UI: **Import from File**.
+Or in the n8n UI: **Import from File**. The local version needs **no credential**: just put your email in **Geocode incident** and run it.
 
-**2. AI provider.** The team already has a **Gemini** key, and the agent can use it:
+On a CPU the local version takes a few minutes per claim. Two settings in **LLM settings** speed it up:
+- `RECONSTRUCTION_SAMPLES = 1` for quick tests.
+- `extraction: 'groq'`: fact extraction moves to Groq, which is faster and better; the reconstruction stays on the fine-tuned model. This needs a Header Auth credential on **Extract facts (LLM)**.
+
+**2. API version only.** The team already has a **Gemini** key, and the agent can use it:
 - In **LLM settings**, set `PROVIDER = { extraction: 'gemini', reconstruction: 'gemini' }`.
 - Create a **Header Auth** credential with Name `Authorization` and Value `Bearer <gemini key>`, and select it in the two LLM nodes.
 
